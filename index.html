@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Turbo Lane 3 — Car Racing Game</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Top HUD (visible during gameplay) -->
+    <header id="hud" class="hidden" aria-label="Game status">
+      <div class="hud-group">
+        <div class="hud-stat">
+          <span class="hud-label">SCORE</span>
+          <span id="hud-score" class="hud-value">0</span>
+        </div>
+        <div class="hud-stat">
+          <span class="hud-label">SPEED</span>
+          <span id="hud-speed" class="hud-value">0 km/h</span>
+        </div>
+        <div class="hud-stat hide-xs">
+          <span class="hud-label">BEST</span>
+          <span id="hud-best" class="hud-value">0</span>
+        </div>
+      </div>
+      <div class="hud-actions">
+        <span id="hud-mode-badge" class="badge">EASY</span>
+        <button id="btn-sound" class="icon-btn" type="button" aria-label="Toggle sound" title="Toggle Sound">🔊</button>
+        <button id="btn-pause" class="icon-btn" type="button" aria-label="Pause game" title="Pause (P)">⏸</button>
+      </div>
+    </header>
+
+    <!-- Main Canvas Stage -->
+    <main id="stage">
+      <canvas id="game-canvas"></canvas>
+
+      <!-- Floating Near-Miss / Nitro Callout -->
+      <div id="callout" class="hidden"></div>
+
+      <!-- Mobile Touch Controls -->
+      <div id="touch-controls" class="hidden" aria-label="Touch controls">
+        <button id="touch-left" class="touch-btn" type="button" aria-label="Steer Left">◀</button>
+        <div class="touch-center">
+          <button id="touch-brake" class="touch-btn touch-brake hidden" type="button" aria-label="Brake">🛑</button>
+          <button id="touch-boost" class="touch-btn touch-boost" type="button" aria-label="Nitro Boost">⚡</button>
+        </div>
+        <button id="touch-right" class="touch-btn" type="button" aria-label="Steer Right">▶</button>
+      </div>
+
+      <!-- Desktop Brake Button (Extreme Hard mode) -->
+      <button id="desktop-brake-btn" class="desktop-brake hidden" type="button" aria-label="Brake">
+        🛑 BRAKE <span class="key-hint">↓ / S</span>
+      </button>
+    </main>
+
+    <!-- Start / Setup Overlay -->
+    <section id="screen-menu" class="overlay">
+      <div class="panel">
+        <div class="brand">
+          <span class="brand-tag">3-LANE ARCADE RACER</span>
+          <h1>TURBO LANE 3</h1>
+          <p class="subtitle">Dodge every vehicle. One crash and the race is over!</p>
+        </div>
+
+        <div class="selector-block">
+          <h2>1. Select Difficulty Mode</h2>
+          <div class="option-grid" id="mode-options" role="radiogroup" aria-label="Difficulty Mode">
+            <button type="button" class="option-card active" data-mode="easy">
+              <span class="opt-title">Easy</span>
+              <span class="opt-desc">Cruise pace &bull; Wide gaps</span>
+            </button>
+            <button type="button" class="option-card" data-mode="hard">
+              <span class="opt-title">Hard</span>
+              <span class="opt-desc">Fast traffic &bull; Tight gaps</span>
+            </button>
+            <button type="button" class="option-card" data-mode="extreme">
+              <span class="opt-title">Extreme Hard</span>
+              <span class="opt-desc">Hyper speed &bull; Relentless</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="selector-block">
+          <h2>2. Select Road</h2>
+          <div class="option-grid" id="road-options" role="radiogroup" aria-label="Road Track">
+            <button type="button" class="option-card active" data-road="neon">
+              <span class="opt-swatch swatch-neon"></span>
+              <span class="opt-title">Neon Night</span>
+              <span class="opt-desc">Cyber freeway</span>
+            </button>
+            <button type="button" class="option-card" data-road="highway">
+              <span class="opt-swatch swatch-highway"></span>
+              <span class="opt-title">Sunny Highway</span>
+              <span class="opt-desc">Coastal express</span>
+            </button>
+            <button type="button" class="option-card" data-road="desert">
+              <span class="opt-swatch swatch-desert"></span>
+              <span class="opt-title">Desert Canyon</span>
+              <span class="opt-desc">Red rock route</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="best-bar">
+          <span>Best (<span id="menu-mode-label">Easy</span>): <strong id="menu-best-score">0</strong></span>
+          <button id="menu-sound-btn" class="text-btn" type="button">🔊 Sound: ON</button>
+        </div>
+
+        <button id="btn-start" class="primary-btn" type="button">START RACE</button>
+
+        <div class="menu-footer-row">
+          <p class="controls-hint">
+            Desktop: <strong>← / →</strong> or <strong>A / D</strong> to steer &bull; <strong>↑ / W</strong> Boost &bull; <strong>↓ / S</strong> Brake (Extreme Hard) &bull; Mobile: Tap or Swipe
+          </p>
+          <button id="btn-feedback-menu" class="feedback-link-btn" type="button">🐞 Report a Bug / Feedback</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pause Overlay -->
+    <section id="screen-pause" class="overlay hidden">
+      <div class="panel panel-compact">
+        <h2>RACE PAUSED</h2>
+        <p class="subtitle">Take a breather—traffic is waiting.</p>
+        <div class="btn-stack">
+          <button id="btn-resume" class="primary-btn" type="button">RESUME</button>
+          <button id="btn-restart-pause" class="secondary-btn" type="button">RESTART</button>
+          <button id="btn-menu-pause" class="secondary-btn" type="button">MAIN MENU</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Game Over Overlay -->
+    <section id="screen-gameover" class="overlay hidden">
+      <div class="panel panel-compact">
+        <span class="crash-tag">CRASHED!</span>
+        <h2>RACE FAILED</h2>
+        <p class="subtitle">You hit another vehicle.</p>
+
+        <div class="stats-grid">
+          <div class="stat-box">
+            <span class="stat-label">FINAL SCORE</span>
+            <span id="over-score" class="stat-num">0</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">BEST SCORE</span>
+            <span id="over-best" class="stat-num">0</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">DISTANCE</span>
+            <span id="over-distance" class="stat-num">0 m</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">NEAR MISSES</span>
+            <span id="over-nearmiss" class="stat-num">0</span>
+          </div>
+        </div>
+
+        <div id="over-new-best" class="new-best hidden">🏆 NEW HIGH SCORE!</div>
+
+        <div class="btn-stack">
+          <button id="btn-retry" class="primary-btn" type="button">RACE AGAIN</button>
+          <button id="btn-menu-over" class="secondary-btn" type="button">CHANGE MODE / ROAD</button>
+          <button id="btn-feedback-over" class="feedback-link-btn" type="button">🐞 Report a Bug</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Bug / Feedback Modal -->
+    <section id="screen-feedback" class="overlay hidden" aria-label="Bug Report and Feedback">
+      <div class="panel panel-compact feedback-panel">
+        <div class="feedback-header">
+          <h2>BUG REPORT / FEEDBACK</h2>
+          <button id="btn-feedback-close" class="icon-btn" type="button" aria-label="Close feedback">✕</button>
+        </div>
+        <p class="subtitle">Found a bug or have an idea? Let us know!</p>
+
+        <form id="feedback-form" class="feedback-form">
+          <div class="form-field">
+            <label for="fb-category">Issue Type</label>
+            <select id="fb-category" name="category">
+              <option value="bug">🐞 Bug Report</option>
+              <option value="gameplay">🏎️ Gameplay / Difficulty</option>
+              <option value="controls">📱 Controls / Mobile</option>
+              <option value="suggestion">💡 Suggestion</option>
+            </select>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field">
+              <label for="fb-mode">Mode</label>
+              <select id="fb-mode" name="mode">
+                <option value="Easy">Easy</option>
+                <option value="Hard">Hard</option>
+                <option value="Extreme Hard">Extreme Hard</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="fb-road">Road</label>
+              <select id="fb-road" name="road">
+                <option value="Neon Night">Neon Night</option>
+                <option value="Sunny Highway">Sunny Highway</option>
+                <option value="Desert Canyon">Desert Canyon</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-field">
+            <label for="fb-contact">Name or Email (optional)</label>
+            <input id="fb-contact" name="contact" type="text" maxlength="80" placeholder="e.g. Alex / alex@example.com" />
+          </div>
+
+          <div class="form-field">
+            <label for="fb-message">Describe the bug or feedback *</label>
+            <textarea id="fb-message" name="message" rows="3" maxlength="500" required placeholder="What happened? What device or browser were you using?"></textarea>
+          </div>
+
+          <div id="fb-status" class="fb-status hidden"></div>
+
+          <div class="btn-stack">
+            <button id="btn-fb-submit" class="primary-btn" type="submit">SUBMIT FEEDBACK</button>
+            <button id="btn-fb-copy" class="secondary-btn hidden" type="button">📋 COPY REPORT</button>
+            <button id="btn-fb-view" class="feedback-link-btn" type="button">📂 View Saved Reports (0)</button>
+          </div>
+        </form>
+
+        <div id="fb-saved-wrap" class="fb-saved-wrap hidden">
+          <div class="fb-saved-header">
+            <span>Saved Reports</span>
+            <button id="btn-fb-clear" class="text-btn" type="button">Clear All</button>
+          </div>
+          <div id="fb-saved-list" class="fb-saved-list"></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
