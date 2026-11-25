@@ -834,20 +834,26 @@
     btnFbSubmit.disabled = true;
     btnFbSubmit.textContent = "SENDING...";
     try {
-      const res = await fetch("/api/feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({
-          category: entry.category,
-          mode: entry.mode,
-          road: entry.road,
-          contact: entry.contact,
-          viewport: entry.viewport,
-          message: entry.message,
-        }),
-      });
-      const data = await res.json();
-      emailed = Boolean(res.ok && data.success);
+      const cfgRes = await fetch("/api/config");
+      const cfg = cfgRes.ok ? await cfgRes.json() : {};
+      if (cfg.accessKey) {
+        const res = await fetch("https://api.web3forms.com/submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({
+            access_key: cfg.accessKey,
+            subject: `[Turbo Lane 3] ${entry.category.toUpperCase()} (${entry.mode} - ${entry.road})`,
+            from_name: entry.contact,
+            category: entry.category,
+            mode: entry.mode,
+            road: entry.road,
+            viewport: entry.viewport,
+            message: entry.message,
+          }),
+        });
+        const data = await res.json();
+        emailed = Boolean(res.ok && data.success);
+      }
     } catch {
       emailed = false;
     } finally {
