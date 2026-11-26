@@ -128,6 +128,8 @@
   const hudScore = document.getElementById("hud-score");
   const hudSpeed = document.getElementById("hud-speed");
   const hudBest = document.getElementById("hud-best");
+  const hudFriendStat = document.getElementById("hud-friend-stat");
+  const hudFriendScore = document.getElementById("hud-friend-score");
   const hudModeBadge = document.getElementById("hud-mode-badge");
   const btnSound = document.getElementById("btn-sound");
   const btnPause = document.getElementById("btn-pause");
@@ -155,6 +157,7 @@
   const overDistance = document.getElementById("over-distance");
   const overNearmiss = document.getElementById("over-nearmiss");
   const overNewBest = document.getElementById("over-new-best");
+  const overMpResult = document.getElementById("over-mp-result");
 
   // ---------------------------------------------------------------------------
   // Web Audio Synthesizer (SFX + Dynamic Arcade Music)
@@ -588,9 +591,13 @@
     return group;
   }
 
-  // Player 3D Mesh
+  // Player 3D Mesh & Friend 3D Mesh (for Online Multiplayer)
   const playerMesh = createVehicleMesh("sports", 0x00e5ff, true);
   scene.add(playerMesh);
+
+  const friendMesh = createVehicleMesh("sports", 0xff3d71, true);
+  friendMesh.visible = false;
+  scene.add(friendMesh);
 
   // ---------------------------------------------------------------------------
   // Roadside 3D Props Pool
@@ -735,6 +742,33 @@
   let nextLevelDist = 500;
   let lastFrameTime = 0;
 
+  // Online Multiplayer (PeerJS) State
+  const mp = {
+    active: false,
+    isHost: false,
+    peer: null,
+    conn: null,
+    roomCode: "",
+    syncTimer: 0,
+    friend: {
+      x: 0,
+      targetX: 0,
+      tilt: 0,
+      score: 0,
+      alive: true,
+    },
+  };
+
+  function sendMp(payload) {
+    if (mp.conn && mp.conn.open) {
+      try {
+        mp.conn.send(payload);
+      } catch {
+        // Ignore transient send errors
+      }
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Storage Helpers
   // ---------------------------------------------------------------------------
@@ -809,21 +843,38 @@
   // ---------------------------------------------------------------------------
   // Game Lifecycle
   // ---------------------------------------------------------------------------
-  function startGame() {
+  function startGame(isMultiplayer = false) {
     sfx.ensureContext();
+    mp.active = Boolean(isMultiplayer);
     const mode = MODES[selectedMode];
 
     clearTrafficAndParticles();
     applyRoadTheme(selectedRoad);
 
     state = "playing";
-    player.lane = 1;
-    player.x = getLaneCenterX(1);
+    player.lane = mp.active ? (mp.isHost ? 0 : 2) : 1;
+    player.x = getLaneCenterX(player.lane);
     player.tilt = 0;
     player.boosting = false;
     player.braking = false;
     playerMesh.position.set(player.x, 0, 0);
     playerMesh.rotation.set(0, 0, 0);
+
+    if (mp.active) {
+      mp.friend.alive = true;
+      mp.friend.score = 0;
+      mp.friend.x = getLaneCenterX(mp.isHost ? 2 : 0);
+      mp.friend.targetX = mp.friend.x;
+      mp.friend.tilt = 0;
+      mp.syncTimer = 0;
+      friendMesh.visible = true;
+      friendMesh.position.set(mp.friend.x, 0, -1.6);
+      hudFriendStat.classList.remove("hidden");
+      hudFriendScore.textContent = "0";
+    } else {
+      friendMesh.visible = false;
+      hudFriendStat.classList.add("hidden");
+    }
 
     speed = mode.baseSpeed;
     score = 0;
@@ -846,6 +897,7 @@
     screenMenu.classList.add("hidden");
     screenPause.classList.add("hidden");
     screenGameover.classList.add("hidden");
+    if (screenMulti) screenMulti.classList.add("hidden");
     hud.classList.remove("hidden");
     touchControls.classList.remove("hidden");
     const isExtreme = selectedMode === "extreme";
@@ -871,6 +923,9 @@
 
   function goToMenu() {
     state = "menu";
+    mp.active = false;
+    friendMesh.visible = false;
+    hudFriendStat.classList.add("hidden");
     sfx.stopMusic();
     hud.classList.add("hidden");
     touchControls.classList.add("hidden");
@@ -890,6 +945,9 @@
     player.braking = false;
     sfx.stopMusic();
     sfx.playCrash();
+    if (mp.active) {
+      sendMp({ type: "crash", score: Math.floor(score) });
+    }
 
     const cx = (player.x + hitCar.x) / 2;
     const cz = hitCar.z / 2;
@@ -937,6 +995,17 @@
     overNearmiss.textContent = String(nearMisses);
     overNewBest.classList.toggle("hidden", !isNewBest);
 
+    if (mp.active) {
+      const fScore = Math.floor(mp.friend.score);
+      const youWon = !mp.friend.alive || finalScore > fScore;
+      overMpResult.textContent = youWon
+        ? `🏆 YOU WIN! (Friend: ${fScore.toLocaleString()})`
+        : `🥈 FRIEND WINS! (Friend: ${fScore.toLocaleString()})`;
+      overMpResult.classList.remove("hidden");
+    } else {
+      overMpResult.classList.add("hidden");
+    }
+
     screenGameover.classList.remove("hidden");
   }
 
@@ -975,10 +1044,10 @@
   window.addEventListener("keydown", (e) => {
     const tag = e.target && e.target.tagName;
     const feedbackOpen = screenFeedback && !screenFeedback.classList.contains("hidden");
-    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || feedbackOpen) {
-      if (e.key === "Escape" && feedbackOpen) {
-        closeFeedback();
-      }
+    const multiOpen = screenMulti && !screenMulti.classList.contains("hidden");
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || feedbackOpen || multiOpen) {
+      if (e.key === "Escape" && feedbackOpen) closeFeedback();
+      if (e.key === "Escape" && multiOpen) closeMultiLobby();
       return;
     }
 
@@ -1093,12 +1162,196 @@
   menuSoundBtn.addEventListener("click", toggleSound);
   btnSound.addEventListener("click", toggleSound);
   btnPause.addEventListener("click", pauseGame);
-  document.getElementById("btn-start").addEventListener("click", startGame);
+  document.getElementById("btn-start").addEventListener("click", () => startGame(false));
   document.getElementById("btn-resume").addEventListener("click", resumeGame);
-  document.getElementById("btn-restart-pause").addEventListener("click", startGame);
+  document.getElementById("btn-restart-pause").addEventListener("click", () => startGame(mp.active));
   document.getElementById("btn-menu-pause").addEventListener("click", goToMenu);
-  document.getElementById("btn-retry").addEventListener("click", startGame);
+  document.getElementById("btn-retry").addEventListener("click", () => {
+    if (mp.active && mp.isHost) {
+      sendMp({ type: "start", mode: selectedMode, road: selectedRoad });
+      startGame(true);
+    } else if (!mp.active) {
+      startGame(false);
+    }
+  });
   document.getElementById("btn-menu-over").addEventListener("click", goToMenu);
+
+  // ---------------------------------------------------------------------------
+  // Online Multiplayer Lobby (PeerJS WebRTC)
+  // ---------------------------------------------------------------------------
+  const screenMulti = document.getElementById("screen-multi");
+  const mpHostIdle = document.getElementById("mp-host-idle");
+  const mpHostActive = document.getElementById("mp-host-active");
+  const mpRoomCodeEl = document.getElementById("mp-room-code");
+  const mpJoinInput = document.getElementById("mp-join-input");
+  const mpStatusEl = document.getElementById("mp-status");
+  const btnMpCreate = document.getElementById("btn-mp-create");
+  const btnMpCopyLink = document.getElementById("btn-mp-copy-link");
+  const btnMpJoin = document.getElementById("btn-mp-join");
+  const btnMpStart = document.getElementById("btn-mp-start");
+
+  function setMpStatus(msg) {
+    mpStatusEl.textContent = msg;
+    mpStatusEl.classList.remove("hidden");
+  }
+
+  function openMultiLobby() {
+    screenMenu.classList.add("hidden");
+    screenMulti.classList.remove("hidden");
+  }
+
+  function closeMultiLobby() {
+    screenMulti.classList.add("hidden");
+    screenMenu.classList.remove("hidden");
+  }
+
+  function spawnSyncedTraffic(items) {
+    items.forEach((item) => {
+      const template = VEHICLE_TYPES.find((v) => v.kind === item.kind) || VEHICLE_TYPES[0];
+      const mesh = createVehicleMesh(template.kind, item.color, false);
+      const x = getLaneCenterX(item.lane);
+      mesh.position.set(x, 0, SPAWN_Z);
+      scene.add(mesh);
+      traffic.push({
+        mesh,
+        kind: template.kind,
+        lane: item.lane,
+        targetLane: item.lane,
+        x,
+        z: SPAWN_Z,
+        w: template.w,
+        len: template.len,
+        speedFactor: template.speedFactor,
+        canLaneChange: false,
+        changedLane: false,
+        nearMissed: false,
+      });
+    });
+  }
+
+  function spawnSyncedCoin(laneIdx) {
+    const mesh = new THREE.Mesh(coinGeo, coinMat);
+    const x = getLaneCenterX(laneIdx);
+    mesh.position.set(x, 1.05, SPAWN_Z);
+    scene.add(mesh);
+    coins.push({ mesh, x, z: SPAWN_Z });
+  }
+
+  function bindPeerConnection(conn) {
+    mp.conn = conn;
+    conn.on("open", () => {
+      if (mp.isHost) {
+        setMpStatus("✅ Friend connected! Click START MULTIPLAYER RACE.");
+        btnMpStart.classList.remove("hidden");
+      } else {
+        setMpStatus("✅ Connected to Host! Waiting for Host to start...");
+      }
+    });
+
+    conn.on("data", (data) => {
+      if (!data || !data.type) return;
+      if (data.type === "start") {
+        selectedMode = data.mode || selectedMode;
+        selectedRoad = data.road || selectedRoad;
+        updateMenuUI();
+        startGame(true);
+      } else if (data.type === "spawn" && !mp.isHost) {
+        spawnSyncedTraffic(data.items || []);
+      } else if (data.type === "coin" && !mp.isHost) {
+        spawnSyncedCoin(data.lane);
+      } else if (data.type === "state") {
+        mp.friend.targetX = data.x;
+        mp.friend.tilt = data.tilt || 0;
+        mp.friend.score = data.score || 0;
+        mp.friend.alive = data.alive !== false;
+        hudFriendScore.textContent = Math.floor(mp.friend.score).toLocaleString();
+      } else if (data.type === "crash") {
+        mp.friend.alive = false;
+        mp.friend.score = data.score || mp.friend.score;
+        friendMesh.visible = false;
+        hudFriendScore.textContent = `${Math.floor(mp.friend.score).toLocaleString()} 💥`;
+        if (state === "playing") {
+          showCallout("🏆 FRIEND CRASHED — YOU WIN!");
+        }
+      }
+    });
+
+    conn.on("close", () => {
+      setMpStatus("⚠️ Friend disconnected.");
+      btnMpStart.classList.add("hidden");
+    });
+  }
+
+  function createRoom() {
+    if (typeof Peer === "undefined") {
+      setMpStatus("⚠️ Multiplayer library still loading, try again in a second.");
+      return;
+    }
+    if (mp.peer) mp.peer.destroy();
+    const code = Math.random().toString(36).substring(2, 7).toUpperCase();
+    mp.roomCode = code;
+    mp.isHost = true;
+    mpHostIdle.classList.add("hidden");
+    mpHostActive.classList.remove("hidden");
+    mpRoomCodeEl.textContent = code;
+    setMpStatus("⏳ Creating room...");
+
+    mp.peer = new Peer(`tl3-${code}`);
+    mp.peer.on("open", () => {
+      setMpStatus(`⏳ Waiting for friend to join room ${code}...`);
+    });
+    mp.peer.on("connection", (conn) => {
+      bindPeerConnection(conn);
+    });
+    mp.peer.on("error", (err) => {
+      setMpStatus(`⚠️ Connection error: ${err.type || "try again"}`);
+    });
+  }
+
+  function joinRoom(rawCode) {
+    const code = (rawCode || mpJoinInput.value).trim().toUpperCase();
+    if (!code) return;
+    if (typeof Peer === "undefined") {
+      setMpStatus("⚠️ Multiplayer library still loading, try again in a second.");
+      return;
+    }
+    if (mp.peer) mp.peer.destroy();
+    mp.roomCode = code;
+    mp.isHost = false;
+    setMpStatus(`⏳ Joining room ${code}...`);
+
+    mp.peer = new Peer();
+    mp.peer.on("open", () => {
+      const conn = mp.peer.connect(`tl3-${code}`, { reliable: true });
+      bindPeerConnection(conn);
+    });
+    mp.peer.on("error", () => {
+      setMpStatus(`⚠️ Could not find room ${code}. Check the code and try again.`);
+    });
+  }
+
+  document.getElementById("btn-multiplayer").addEventListener("click", openMultiLobby);
+  document.getElementById("btn-mp-close").addEventListener("click", closeMultiLobby);
+  btnMpCreate.addEventListener("click", createRoom);
+  btnMpJoin.addEventListener("click", () => joinRoom());
+  btnMpStart.addEventListener("click", () => {
+    if (!mp.isHost || !mp.conn || !mp.conn.open) return;
+    sendMp({ type: "start", mode: selectedMode, road: selectedRoad });
+    startGame(true);
+  });
+  btnMpCopyLink.addEventListener("click", async () => {
+    if (!mp.roomCode) return;
+    const url = `${window.location.origin}${window.location.pathname}?room=${mp.roomCode}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      btnMpCopyLink.textContent = "✓ INVITE LINK COPIED!";
+    } catch {
+      btnMpCopyLink.textContent = url;
+    }
+    setTimeout(() => {
+      btnMpCopyLink.textContent = "🔗 COPY INVITE LINK";
+    }, 2200);
+  });
 
   // ---------------------------------------------------------------------------
   // Bug Report / Feedback Form
@@ -1310,6 +1563,7 @@
       chosen.push(remaining[Math.floor(Math.random() * remaining.length)]);
     }
 
+    const spawnedItems = [];
     chosen.forEach((laneIdx) => {
       const template = VEHICLE_TYPES[Math.floor(Math.random() * VEHICLE_TYPES.length)];
       const color = template.colors[Math.floor(Math.random() * template.colors.length)];
@@ -1332,7 +1586,12 @@
         changedLane: false,
         nearMissed: false,
       });
+      spawnedItems.push({ lane: laneIdx, kind: template.kind, color });
     });
+
+    if (mp.active && mp.isHost && spawnedItems.length > 0) {
+      sendMp({ type: "spawn", items: spawnedItems });
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -1524,19 +1783,20 @@
       comboTimer -= dt;
       if (comboTimer <= 0) coinCombo = 0;
     }
-    coinTimer -= dt;
-    if (coinTimer <= 0) {
-      coinTimer = 1.25 + Math.random() * 0.9;
-      const openCoinLanes = [0, 1, 2].filter(
-        (l) => !traffic.some((c) => (c.lane === l || c.targetLane === l) && c.z < SPAWN_Z + 18)
-      );
-      if (openCoinLanes.length > 0) {
-        const laneIdx = openCoinLanes[Math.floor(Math.random() * openCoinLanes.length)];
-        const mesh = new THREE.Mesh(coinGeo, coinMat);
-        const x = getLaneCenterX(laneIdx);
-        mesh.position.set(x, 1.05, SPAWN_Z);
-        scene.add(mesh);
-        coins.push({ mesh, x, z: SPAWN_Z });
+    if (!mp.active || mp.isHost) {
+      coinTimer -= dt;
+      if (coinTimer <= 0) {
+        coinTimer = 1.25 + Math.random() * 0.9;
+        const openCoinLanes = [0, 1, 2].filter(
+          (l) => !traffic.some((c) => (c.lane === l || c.targetLane === l) && c.z < SPAWN_Z + 18)
+        );
+        if (openCoinLanes.length > 0) {
+          const laneIdx = openCoinLanes[Math.floor(Math.random() * openCoinLanes.length)];
+          spawnSyncedCoin(laneIdx);
+          if (mp.active && mp.isHost) {
+            sendMp({ type: "coin", lane: laneIdx });
+          }
+        }
       }
     }
     for (let i = coins.length - 1; i >= 0; i--) {
@@ -1581,15 +1841,40 @@
       }
     }
 
-    // Spawning
-    spawnTimer -= dt;
-    if (spawnTimer <= 0) {
-      spawnTraffic();
-      const dynamicInterval = Math.max(
-        mode.minSpawnInterval,
-        mode.spawnInterval - elapsedTime * mode.spawnRampPerSec
-      );
-      spawnTimer = dynamicInterval * (0.82 + Math.random() * 0.36);
+    // Spawning (In multiplayer, only Host spawns & broadcasts traffic)
+    if (!mp.active || mp.isHost) {
+      spawnTimer -= dt;
+      if (spawnTimer <= 0) {
+        spawnTraffic();
+        const dynamicInterval = Math.max(
+          mode.minSpawnInterval,
+          mode.spawnInterval - elapsedTime * mode.spawnRampPerSec
+        );
+        spawnTimer = dynamicInterval * (0.82 + Math.random() * 0.36);
+      }
+    }
+
+    // Multiplayer live car sync
+    if (mp.active) {
+      mp.syncTimer += dt;
+      if (mp.syncTimer >= 0.05) {
+        mp.syncTimer = 0;
+        sendMp({
+          type: "state",
+          x: player.x,
+          tilt: player.tilt,
+          score: Math.floor(score),
+          alive: true,
+        });
+      }
+      if (mp.friend.alive) {
+        mp.friend.x += (mp.friend.targetX - mp.friend.x) * Math.min(1, dt * 14);
+        friendMesh.position.set(mp.friend.x, Math.sin(elapsedTime * 28 + 1) * 0.025, -1.6);
+        friendMesh.rotation.set(0, mp.friend.tilt * 0.45, mp.friend.tilt);
+        if (friendMesh.userData && friendMesh.userData.wheels) {
+          for (const w of friendMesh.userData.wheels) w.rotation.x -= speed3D * dt * 1.6;
+        }
+      }
     }
 
     // Traffic update, overtaking gaps & 3D collision check
@@ -1703,5 +1988,13 @@
       screenLoading.classList.add("fade-out");
       setTimeout(() => screenLoading.classList.add("hidden"), 480);
     }, 750);
+  }
+
+  // Auto-open & join if opened via ?room=CODE invite link
+  const roomParam = new URLSearchParams(window.location.search).get("room");
+  if (roomParam) {
+    mpJoinInput.value = roomParam.toUpperCase();
+    openMultiLobby();
+    setTimeout(() => joinRoom(roomParam), 600);
   }
 })();

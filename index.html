@@ -35,6 +35,10 @@
           <span class="hud-label">BEST</span>
           <span id="hud-best" class="hud-value">0</span>
         </div>
+        <div id="hud-friend-stat" class="hud-stat hidden">
+          <span class="hud-label">FRIEND</span>
+          <span id="hud-friend-score" class="hud-value" style="color:#ff6b93">0</span>
+        </div>
       </div>
       <div class="hud-actions">
         <span id="hud-mode-badge" class="badge">EASY</span>
@@ -119,7 +123,10 @@
           <button id="menu-sound-btn" class="text-btn" type="button">🔊 Sound: ON</button>
         </div>
 
-        <button id="btn-start" class="primary-btn" type="button">START RACE</button>
+        <div class="btn-stack">
+          <button id="btn-start" class="primary-btn" type="button">START RACE</button>
+          <button id="btn-multiplayer" class="secondary-btn" type="button">👥 PLAY WITH FRIEND (ONLINE)</button>
+        </div>
 
         <div class="menu-footer-row">
           <p class="controls-hint">
@@ -170,6 +177,7 @@
         </div>
 
         <div id="over-new-best" class="new-best hidden">🏆 NEW HIGH SCORE!</div>
+        <div id="over-mp-result" class="new-best hidden"></div>
 
         <div class="btn-stack">
           <button id="btn-retry" class="primary-btn" type="button">RACE AGAIN</button>
@@ -246,9 +254,49 @@
         </div>
       </div>
     </section>
+
+    <!-- Online Multiplayer Lobby Modal -->
+    <section id="screen-multi" class="overlay hidden" aria-label="Online Multiplayer Lobby">
+      <div class="panel panel-compact feedback-panel">
+        <div class="feedback-header">
+          <h2>👥 PLAY WITH FRIEND</h2>
+          <button id="btn-mp-close" class="icon-btn" type="button" aria-label="Close multiplayer">✕</button>
+        </div>
+        <p class="subtitle">Create a room or join your friend's code to race live on the same 3D road!</p>
+
+        <div class="mp-card">
+          <div class="mp-card-title">Host a Room</div>
+          <div id="mp-host-idle">
+            <button id="btn-mp-create" class="primary-btn" type="button">CREATE ROOM</button>
+          </div>
+          <div id="mp-host-active" class="hidden">
+            <div class="mp-code-row">
+              <span>Room Code:</span>
+              <strong id="mp-room-code" class="mp-code">----</strong>
+            </div>
+            <button id="btn-mp-copy-link" class="secondary-btn" type="button">🔗 COPY INVITE LINK</button>
+          </div>
+        </div>
+
+        <div class="mp-divider">OR</div>
+
+        <div class="mp-card">
+          <div class="mp-card-title">Join a Friend's Room</div>
+          <div class="mp-join-row">
+            <input id="mp-join-input" type="text" maxlength="10" placeholder="Enter Room Code (e.g. 4829A)" />
+            <button id="btn-mp-join" class="primary-btn mp-join-btn" type="button">JOIN</button>
+          </div>
+        </div>
+
+        <div id="mp-status" class="mp-status hidden"></div>
+
+        <button id="btn-mp-start" class="primary-btn hidden" type="button">START MULTIPLAYER RACE</button>
+      </div>
+    </section>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <script src="game.js"></script>
 </body>
 </html>
