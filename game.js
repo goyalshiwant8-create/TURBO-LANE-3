@@ -131,9 +131,11 @@
   const hudFriendStat = document.getElementById("hud-friend-stat");
   const hudFriendScore = document.getElementById("hud-friend-score");
   const hudModeBadge = document.getElementById("hud-mode-badge");
+  const hudProgressFill = document.getElementById("hud-progress-fill");
   const btnSound = document.getElementById("btn-sound");
   const btnPause = document.getElementById("btn-pause");
   const calloutEl = document.getElementById("callout");
+  const countdownEl = document.getElementById("countdown");
 
   const touchControls = document.getElementById("touch-controls");
   const touchLeft = document.getElementById("touch-left");
@@ -148,6 +150,7 @@
 
   const modeOptionBtns = document.querySelectorAll("#mode-options .option-card");
   const roadOptionBtns = document.querySelectorAll("#road-options .option-card");
+  const paintDotBtns = document.querySelectorAll("#car-color-options .paint-dot");
   const menuModeLabel = document.getElementById("menu-mode-label");
   const menuBestScore = document.getElementById("menu-best-score");
   const menuSoundBtn = document.getElementById("menu-sound-btn");
@@ -342,6 +345,21 @@
         osc.start(now + i * 0.07);
         osc.stop(now + i * 0.07 + 0.23);
       });
+    }
+
+    playCountdown(isGo) {
+      const ac = this.ensureContext();
+      if (!ac) return;
+      const now = ac.currentTime;
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = isGo ? "sawtooth" : "sine";
+      osc.frequency.setValueAtTime(isGo ? 880 : 440, now);
+      gain.gain.setValueAtTime(0.11, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + (isGo ? 0.25 : 0.14));
+      osc.connect(gain).connect(ac.destination);
+      osc.start(now);
+      osc.stop(now + (isGo ? 0.26 : 0.15));
     }
 
     playCrash() {
@@ -583,7 +601,7 @@
       flameR.visible = false;
       group.add(flameL, flameR);
 
-      group.userData = { wheels, tailMat, tlL, tlR, beam, flameL, flameR };
+      group.userData = { bodyMat, wheels, tailMat, tlL, tlR, beam, flameL, flameR };
     } else {
       group.userData = { wheels };
     }
@@ -598,6 +616,34 @@
   const friendMesh = createVehicleMesh("sports", 0xff3d71, true);
   friendMesh.visible = false;
   scene.add(friendMesh);
+
+  // 3D Checkered Finish Line Arch (visible near 1000m in Multiplayer)
+  const finishArch = new THREE.Group();
+  const pillarMat = new THREE.MeshLambertMaterial({ color: 0xf8fafc });
+  const pillarL = new THREE.Mesh(new THREE.BoxGeometry(0.45, 5.2, 0.45), pillarMat);
+  pillarL.position.set(-ROAD_WIDTH / 2 - 0.3, 2.6, 0);
+  const pillarR = pillarL.clone();
+  pillarR.position.x = ROAD_WIDTH / 2 + 0.3;
+  finishArch.add(pillarL, pillarR);
+  for (let c = 0; c < 12; c++) {
+    const sqColor = c % 2 === 0 ? 0xffffff : 0x0f172a;
+    const sq = new THREE.Mesh(
+      new THREE.BoxGeometry((ROAD_WIDTH + 0.8) / 12, 0.9, 0.35),
+      new THREE.MeshBasicMaterial({ color: sqColor })
+    );
+    sq.position.set(-ROAD_WIDTH / 2 - 0.4 + ((c + 0.5) * (ROAD_WIDTH + 0.8)) / 12, 4.9, 0);
+    finishArch.add(sq);
+
+    const floorSq = new THREE.Mesh(
+      new THREE.PlaneGeometry(ROAD_WIDTH / 12, 1.4),
+      new THREE.MeshBasicMaterial({ color: sqColor })
+    );
+    floorSq.rotation.x = -Math.PI / 2;
+    floorSq.position.set(-ROAD_WIDTH / 2 + ((c + 0.5) * ROAD_WIDTH) / 12, 0.03, 0);
+    finishArch.add(floorSq);
+  }
+  finishArch.visible = false;
+  scene.add(finishArch);
 
   // ---------------------------------------------------------------------------
   // Roadside 3D Props Pool
@@ -846,6 +892,28 @@
   // ---------------------------------------------------------------------------
   // Game Lifecycle
   // ---------------------------------------------------------------------------
+  function runCountdown() {
+    if (!countdownEl) return;
+    clearTimeout(runCountdown._t1);
+    clearTimeout(runCountdown._t2);
+    clearTimeout(runCountdown._t3);
+    clearTimeout(runCountdown._t4);
+    const showStep = (txt, isGo) => {
+      countdownEl.textContent = txt;
+      countdownEl.classList.toggle("go", Boolean(isGo));
+      countdownEl.classList.remove("hidden");
+      countdownEl.style.animation = "none";
+      void countdownEl.offsetWidth;
+      countdownEl.style.animation = "";
+      sfx.playCountdown(Boolean(isGo));
+    };
+    showStep("3", false);
+    runCountdown._t1 = setTimeout(() => showStep("2", false), 420);
+    runCountdown._t2 = setTimeout(() => showStep("1", false), 840);
+    runCountdown._t3 = setTimeout(() => showStep("GO!", true), 1260);
+    runCountdown._t4 = setTimeout(() => countdownEl.classList.add("hidden"), 1750);
+  }
+
   function startGame(isMultiplayer = false) {
     sfx.ensureContext();
     mp.active = Boolean(isMultiplayer);
@@ -853,6 +921,8 @@
 
     clearTrafficAndParticles();
     applyRoadTheme(selectedRoad);
+    finishArch.visible = false;
+    hudProgressFill.style.width = "0%";
 
     state = "playing";
     player.lane = mp.active ? (mp.isHost ? 0 : 2) : 1;
@@ -908,6 +978,7 @@
     touchBrake.classList.toggle("hidden", !isExtreme);
     desktopBrakeBtn.classList.toggle("hidden", !isExtreme);
     sfx.startMusic(selectedMode);
+    runCountdown();
   }
 
   function pauseGame() {
@@ -1178,6 +1249,16 @@
     });
   });
 
+  paintDotBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const hex = Number(btn.dataset.color);
+      paintDotBtns.forEach((b) => b.classList.toggle("active", b === btn));
+      if (playerMesh.userData && playerMesh.userData.bodyMat) {
+        playerMesh.userData.bodyMat.color.setHex(hex);
+      }
+    });
+  });
+
   const toggleSound = () => {
     sfx.enabled = !sfx.enabled;
     if (!sfx.enabled) {
@@ -1199,7 +1280,10 @@
     if (mp.active && mp.isHost) {
       sendMp({ type: "start", mode: selectedMode, road: selectedRoad });
       startGame(true);
-    } else if (!mp.active) {
+    } else if (mp.active && !mp.isHost) {
+      sendMp({ type: "rematch_request" });
+      overMpResult.textContent = "⏳ Rematch requested! Waiting for Host...";
+    } else {
       startGame(false);
     }
   });
@@ -1313,6 +1397,8 @@
           sfx.stopMusic();
           finishGameOver();
         }
+      } else if (data.type === "rematch_request" && mp.isHost) {
+        overMpResult.textContent = "🔄 Friend wants a rematch! Click RACE AGAIN.";
       }
     });
 
@@ -1822,6 +1908,21 @@
     const boostMult = player.boosting ? 1.5 : 1;
     score += dt * 28 * mode.scoreMult * boostMult;
     distanceMeters += (speed * dt) / 16;
+
+    if (mp.active) {
+      const pct = Math.min(100, (distanceMeters / MP_FINISH_METERS) * 100);
+      hudProgressFill.style.width = `${pct}%`;
+      const metersLeft = MP_FINISH_METERS - distanceMeters;
+      if (metersLeft <= 130 && metersLeft > -15) {
+        finishArch.visible = true;
+        finishArch.position.z = -metersLeft * 1.1;
+      } else {
+        finishArch.visible = false;
+      }
+    } else {
+      const stagePct = ((distanceMeters % 500) / 500) * 100;
+      hudProgressFill.style.width = `${stagePct}%`;
+    }
     if (mp.active && distanceMeters >= MP_FINISH_METERS) {
       mp.resultReason = "finished_first";
       sendMp({ type: "finish", score: Math.floor(score) });

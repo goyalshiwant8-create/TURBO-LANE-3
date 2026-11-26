@@ -45,11 +45,17 @@
         <button id="btn-sound" class="icon-btn" type="button" aria-label="Toggle sound" title="Toggle Sound">🔊</button>
         <button id="btn-pause" class="icon-btn" type="button" aria-label="Pause game" title="Pause (P)">⏸</button>
       </div>
+      <div class="hud-progress-track">
+        <div id="hud-progress-fill" class="hud-progress-fill"></div>
+      </div>
     </header>
 
     <!-- Main Canvas Stage -->
     <main id="stage">
       <canvas id="game-canvas"></canvas>
+
+      <!-- 3-2-1-GO Countdown -->
+      <div id="countdown" class="countdown hidden">3</div>
 
       <!-- Floating Near-Miss / Nitro Callout -->
       <div id="callout" class="hidden"></div>
@@ -119,8 +125,22 @@
         </div>
 
         <div class="best-bar">
-          <span>Best (<span id="menu-mode-label">Easy</span>): <strong id="menu-best-score">0</strong></span>
+          <div class="car-paint-row">
+            <span class="paint-label">Car Paint:</span>
+            <div id="car-color-options" class="paint-dots" role="radiogroup" aria-label="Car Color">
+              <button type="button" class="paint-dot active" data-color="0x00e5ff" style="background:#00e5ff" aria-label="Cyan"></button>
+              <button type="button" class="paint-dot" data-color="0xf43f5e" style="background:#f43f5e" aria-label="Red"></button>
+              <button type="button" class="paint-dot" data-color="0xfbbf24" style="background:#fbbf24" aria-label="Gold"></button>
+              <button type="button" class="paint-dot" data-color="0x22c55e" style="background:#22c55e" aria-label="Lime"></button>
+              <button type="button" class="paint-dot" data-color="0xa855f7" style="background:#a855f7" aria-label="Violet"></button>
+            </div>
+          </div>
           <button id="menu-sound-btn" class="text-btn" type="button">🔊 Sound: ON</button>
+        </div>
+
+        <div class="best-bar" style="padding: 6px 12px;">
+          <span>Best (<span id="menu-mode-label">Easy</span>): <strong id="menu-best-score">0</strong></span>
+          <span class="opt-desc">3D WebGL • 60 FPS</span>
         </div>
 
         <div class="btn-stack">

@@ -909,3 +909,83 @@ h2 {
   border: 1px solid rgba(0, 229, 255, 0.35);
   color: #a5f3fc;
 }
+
+/* HUD Progress Bar */
+.hud-progress-track {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.hud-progress-fill {
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(90deg, #00e5ff, #fbbf24);
+  transition: width 0.15s linear;
+}
+
+/* 3-2-1-GO Countdown */
+.countdown {
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 16;
+  font-size: clamp(3.5rem, 12vw, 6rem);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  color: #fff;
+  text-shadow: 0 0 30px rgba(0, 229, 255, 0.85), 0 8px 24px rgba(0, 0, 0, 0.65);
+  pointer-events: none;
+  animation: countPop 0.65s ease;
+}
+
+.countdown.go {
+  color: #00e5ff;
+}
+
+@keyframes countPop {
+  0% { transform: translate(-50%, -50%) scale(1.6); opacity: 0.2; }
+  45% { transform: translate(-50%, -50%) scale(0.95); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+
+/* Car Paint Picker */
+.car-paint-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.paint-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.paint-dots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.paint-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+
+.paint-dot:hover {
+  transform: scale(1.12);
+}
+
+.paint-dot.active {
+  border-color: #ffffff;
+  transform: scale(1.15);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.45);
+}
