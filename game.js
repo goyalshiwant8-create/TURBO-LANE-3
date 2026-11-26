@@ -53,62 +53,68 @@
     neon: {
       id: "neon",
       label: "Neon Night",
-      sky: 0x050814,
-      fog: 0x070b1a,
-      ground: 0x090e1c,
-      shoulder: 0x111827,
-      asphalt: 0x171d33,
-      edgeLine: 0x00e5ff,
-      laneDash: 0xff3d71,
-      ambientColor: 0x6b7db3,
-      ambientIntensity: 0.75,
-      sunColor: 0xa5f3fc,
-      sunIntensity: 0.8,
+      skyTop: "#060b16",
+      skyHorizon: "#1b2842",
+      sky: 0x101829,
+      fog: 0x131d31,
+      ground: 0x1e242b,
+      shoulder: 0x262b33,
+      asphalt: 0x1e2228,
+      edgeLine: 0xf59e0b,
+      laneDash: 0xd1d5db,
+      ambientColor: 0x64748b,
+      ambientIntensity: 0.72,
+      sunColor: 0xcbd5e1,
+      sunIntensity: 0.85,
       propType: "neonPole",
       nightMode: true,
     },
     highway: {
       id: "highway",
       label: "Sunny Highway",
-      sky: 0x60a5fa,
-      fog: 0x93c5fd,
-      ground: 0x16a34a,
-      shoulder: 0x64748b,
-      asphalt: 0x334155,
-      edgeLine: 0xf8fafc,
-      laneDash: 0xffffff,
-      ambientColor: 0xffffff,
-      ambientIntensity: 0.85,
-      sunColor: 0xfffbeb,
-      sunIntensity: 1.15,
+      skyTop: "#2563eb",
+      skyHorizon: "#bae6fd",
+      sky: 0x93c5fd,
+      fog: 0xbfe0f7,
+      ground: 0x3b5323,
+      shoulder: 0x57534e,
+      asphalt: 0x272b30,
+      edgeLine: 0xf59e0b,
+      laneDash: 0xf1f5f9,
+      ambientColor: 0xf8fafc,
+      ambientIntensity: 0.78,
+      sunColor: 0xfff7e6,
+      sunIntensity: 1.3,
       propType: "tree",
       nightMode: false,
     },
     desert: {
       id: "desert",
       label: "Desert Canyon",
-      sky: 0xf59e0b,
-      fog: 0xfbbf24,
-      ground: 0xd97706,
-      shoulder: 0x92400e,
-      asphalt: 0x44403c,
-      edgeLine: 0xfde047,
-      laneDash: 0xfef08a,
-      ambientColor: 0xffedd5,
-      ambientIntensity: 0.85,
-      sunColor: 0xfff7ed,
-      sunIntensity: 1.2,
+      skyTop: "#0284c7",
+      skyHorizon: "#fed7aa",
+      sky: 0xfdba74,
+      fog: 0xf3c694,
+      ground: 0xa68158,
+      shoulder: 0x78624a,
+      asphalt: 0x2b2927,
+      edgeLine: 0xfbbf24,
+      laneDash: 0xf3f4f6,
+      ambientColor: 0xfff1e0,
+      ambientIntensity: 0.78,
+      sunColor: 0xffe8cc,
+      sunIntensity: 1.35,
       propType: "cactus",
       nightMode: false,
     },
   };
 
   const VEHICLE_TYPES = [
-    { kind: "hypercar", w: 2.02, len: 4.3, h: 1.02, speedFactor: 0.45, colors: [0xf43f5e, 0x00e5ff, 0xfbbf24, 0x22c55e, 0xa855f7] },
-    { kind: "gt", w: 1.98, len: 4.2, h: 1.05, speedFactor: 0.45, colors: [0xf97316, 0x3b82f6, 0xec4899, 0xe2e8f0] },
-    { kind: "spider", w: 1.96, len: 4.1, h: 0.98, speedFactor: 0.45, colors: [0xfacc15, 0x10b981, 0xef4444, 0x06b6d4] },
-    { kind: "prototype", w: 2.06, len: 4.4, h: 0.96, speedFactor: 0.45, colors: [0x6366f1, 0xf43f5e, 0x14b8a6, 0xf8fafc] },
-    { kind: "apex", w: 2.0, len: 4.25, h: 1.0, speedFactor: 0.45, colors: [0x84cc16, 0xeab308, 0x0ea5e9, 0xd946ef] },
+    { kind: "hypercar", w: 2.02, len: 4.3, h: 1.02, speedFactor: 0.45, colors: [0xb91c1c, 0x1d4ed8, 0xe5e7eb, 0x18181b, 0x94a3b8] },
+    { kind: "gt", w: 1.98, len: 4.2, h: 1.05, speedFactor: 0.45, colors: [0xc2410c, 0x1e3a8a, 0x374151, 0xd4d4d8] },
+    { kind: "spider", w: 1.96, len: 4.1, h: 0.98, speedFactor: 0.45, colors: [0xc29b48, 0x15803d, 0x991b1b, 0x0f766e] },
+    { kind: "prototype", w: 2.06, len: 4.4, h: 0.96, speedFactor: 0.45, colors: [0x334155, 0xf8fafc, 0x7c2d12, 0x1e293b] },
+    { kind: "apex", w: 2.0, len: 4.25, h: 1.0, speedFactor: 0.45, colors: [0x4b5563, 0x0369a1, 0x854d0e, 0xe2e8f0] },
   ];
 
   // 3D Road Dimensions
@@ -425,40 +431,66 @@
   sunLight.shadow.camera.bottom = -d;
   scene.add(sunLight);
 
-  // Road & Ground Meshes
-  const groundMat = new THREE.MeshLambertMaterial({ color: 0x090e1c });
+  // Procedural Real-World Textures (Terrain, Asphalt with Tire Tracks, Sky Dome)
+  function createTerrainTexture() {
+    const c = document.createElement("canvas");
+    c.width = 128;
+    c.height = 128;
+    const g = c.getContext("2d");
+    g.fillStyle = "#dcdcdc";
+    g.fillRect(0, 0, 128, 128);
+    for (let i = 0; i < 1200; i++) {
+      const v = 165 + Math.floor(Math.random() * 75);
+      g.fillStyle = `rgb(${v},${v},${v})`;
+      g.fillRect(Math.random() * 128, Math.random() * 128, 3, 3);
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(22, 24);
+    return tex;
+  }
+
+  const terrainTex = createTerrainTexture();
+  const groundMat = new THREE.MeshStandardMaterial({ color: 0x1e242b, map: terrainTex, roughness: 0.96, metalness: 0.02 });
   const groundMesh = new THREE.Mesh(new THREE.PlaneGeometry(240, 240), groundMat);
   groundMesh.rotation.x = -Math.PI / 2;
   groundMesh.position.set(0, -0.04, -75);
   groundMesh.receiveShadow = true;
   scene.add(groundMesh);
 
-  const shoulderMat = new THREE.MeshLambertMaterial({ color: 0x111827 });
-  const shoulderMesh = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_WIDTH + 2.6, 240), shoulderMat);
+  const shoulderMat = new THREE.MeshStandardMaterial({ color: 0x262b33, map: terrainTex, roughness: 0.92, metalness: 0.04 });
+  const shoulderMesh = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_WIDTH + 2.8, 240), shoulderMat);
   shoulderMesh.rotation.x = -Math.PI / 2;
   shoulderMesh.position.set(0, -0.02, -75);
   shoulderMesh.receiveShadow = true;
   scene.add(shoulderMesh);
 
-  // Procedural Asphalt Grain Texture
+  // Procedural Asphalt Grain Texture with Subtle Tire Tracks
   function createAsphaltTexture() {
     const texCanvas = document.createElement("canvas");
-    texCanvas.width = 128;
-    texCanvas.height = 128;
+    texCanvas.width = 256;
+    texCanvas.height = 256;
     const tctx = texCanvas.getContext("2d");
-    tctx.fillStyle = "#d8d8d8";
-    tctx.fillRect(0, 0, 128, 128);
-    for (let i = 0; i < 900; i++) {
-      const x = Math.random() * 128;
-      const y = Math.random() * 128;
-      const v = 185 + Math.floor(Math.random() * 55);
+    tctx.fillStyle = "#e0e0e0";
+    tctx.fillRect(0, 0, 256, 256);
+    // Subtle dark tire-wear lanes in each of the 3 lanes
+    tctx.fillStyle = "rgba(0, 0, 0, 0.14)";
+    [42, 128, 214].forEach((cx) => {
+      tctx.fillRect(cx - 18, 0, 10, 256);
+      tctx.fillRect(cx + 8, 0, 10, 256);
+    });
+    for (let i = 0; i < 2400; i++) {
+      const x = Math.random() * 256;
+      const y = Math.random() * 256;
+      const v = 175 + Math.floor(Math.random() * 65);
       tctx.fillStyle = `rgb(${v},${v},${v})`;
       tctx.fillRect(x, y, 2, 2);
     }
     const tex = new THREE.CanvasTexture(texCanvas);
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(2, 24);
+    tex.repeat.set(1, 22);
     return tex;
   }
 
@@ -675,11 +707,12 @@
     return group;
   }
 
+  const bodyPaintDefault = 0x1d4ed8;
   // Player 3D Mesh & Friend 3D Mesh (for Online Multiplayer)
-  const playerMesh = createVehicleMesh("sports", 0x00e5ff, true);
+  const playerMesh = createVehicleMesh("sports", bodyPaintDefault, true);
   scene.add(playerMesh);
 
-  const friendMesh = createVehicleMesh("sports", 0xff3d71, true);
+  const friendMesh = createVehicleMesh("sports", 0xb91c1c, true);
   friendMesh.visible = false;
   scene.add(friendMesh);
 
@@ -785,20 +818,48 @@
   let airportRadar = null;
   let skyPlane = null;
 
+  function createBuildingTexture(nightMode) {
+    const c = document.createElement("canvas");
+    c.width = 128;
+    c.height = 256;
+    const g = c.getContext("2d");
+    g.fillStyle = nightMode ? "#182032" : "#9aa4b2";
+    g.fillRect(0, 0, 128, 256);
+    for (let y = 10; y < 246; y += 18) {
+      for (let x = 8; x < 118; x += 18) {
+        if (nightMode) {
+          const lit = Math.random() > 0.35;
+          g.fillStyle = lit ? (Math.random() > 0.2 ? "#fde68a" : "#e0f2fe") : "#0f172a";
+        } else {
+          g.fillStyle = Math.random() > 0.25 ? "#1e293b" : "#334155";
+        }
+        g.fillRect(x, y, 12, 11);
+      }
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+  }
+
+  const buildingDayTex = createBuildingTexture(false);
+  const buildingNightTex = createBuildingTexture(true);
+
   function createBuildingMesh(nightMode, desertMode, idx) {
     const bGroup = new THREE.Group();
     const w = 4.5 + (idx % 3) * 1.4;
     const d = 4.5 + ((idx + 1) % 3) * 1.4;
-    const h = 7 + ((idx * 5) % 14);
+    const h = 8 + ((idx * 5) % 15);
     const palette = nightMode
-      ? [0x1e293b, 0x172554, 0x312e81]
+      ? [0x94a3b8, 0x64748b, 0xcbd5e1]
       : desertMode
-      ? [0xd6b892, 0xc29b6c, 0xa87c4f]
-      : [0xcbd5e1, 0x94a3b8, 0xe2e8f0, 0x64748b];
+      ? [0xd6b892, 0xc29b6c, 0xb8966a]
+      : [0xdbe3ec, 0xcbd5e1, 0xb8c4d4, 0xe5e7eb];
     const wallMat = new THREE.MeshStandardMaterial({
       color: palette[idx % palette.length],
-      roughness: 0.7,
-      metalness: 0.2,
+      map: nightMode ? buildingNightTex : buildingDayTex,
+      roughness: 0.55,
+      metalness: 0.25,
     });
     const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMat);
     body.position.y = h / 2;
@@ -806,22 +867,10 @@
     body.receiveShadow = true;
     bGroup.add(body);
 
-    // Lit / reflective window bands
-    const winColor = nightMode ? (idx % 2 === 0 ? 0xfef08a : 0x38bdf8) : 0x0f172a;
-    const winMat = nightMode
-      ? new THREE.MeshBasicMaterial({ color: winColor })
-      : new THREE.MeshStandardMaterial({ color: winColor, metalness: 0.8, roughness: 0.15 });
-    const floors = Math.max(2, Math.floor(h / 2.6));
-    for (let f = 1; f < floors; f++) {
-      const band = new THREE.Mesh(new THREE.BoxGeometry(w + 0.08, 0.55, d + 0.08), winMat);
-      band.position.y = f * 2.4;
-      bGroup.add(band);
-    }
-
     // Rooftop detail
     const roofBox = new THREE.Mesh(
       new THREE.BoxGeometry(w * 0.4, 0.9, d * 0.4),
-      new THREE.MeshLambertMaterial({ color: 0x334155 })
+      new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 })
     );
     roofBox.position.y = h + 0.45;
     bGroup.add(roofBox);
@@ -1096,6 +1145,34 @@
     }
   }
 
+  function createSkyTexture(topColor, horizonColor) {
+    const c = document.createElement("canvas");
+    c.width = 4;
+    c.height = 256;
+    const g = c.getContext("2d");
+    const grad = g.createLinearGradient(0, 0, 0, 256);
+    grad.addColorStop(0, topColor);
+    grad.addColorStop(0.65, horizonColor);
+    grad.addColorStop(1, horizonColor);
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 4, 256);
+    return new THREE.CanvasTexture(c);
+  }
+
+  function createSunGlowTexture(isNight) {
+    const c = document.createElement("canvas");
+    c.width = 256;
+    c.height = 256;
+    const g = c.getContext("2d");
+    const grad = g.createRadialGradient(128, 128, 6, 128, 128, 124);
+    grad.addColorStop(0, isNight ? "rgba(226,232,240,0.95)" : "rgba(255,252,235,0.98)");
+    grad.addColorStop(0.2, isNight ? "rgba(148,163,184,0.35)" : "rgba(254,240,138,0.45)");
+    grad.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 256, 256);
+    return new THREE.CanvasTexture(c);
+  }
+
   function buildSkyline(roadId) {
     while (skylineGroup.children.length > 0) {
       skylineGroup.remove(skylineGroup.children[0]);
@@ -1108,27 +1185,23 @@
         const h = 14 + Math.random() * 24;
         const b = new THREE.Mesh(
           new THREE.BoxGeometry(6 + Math.random() * 3, h, 6),
-          new THREE.MeshBasicMaterial({ color: 0x0f172a, fog: false })
+          new THREE.MeshStandardMaterial({ color: 0x334155, map: buildingNightTex, fog: false })
         );
-        b.position.set(x, h / 2 - 2, -160 - Math.random() * 12);
-        const strip = new THREE.Mesh(
-          new THREE.BoxGeometry(0.3, h * 0.75, 0.3),
-          new THREE.MeshBasicMaterial({ color: i % 2 === 0 ? 0x00e5ff : 0xff3d71, fog: false })
-        );
-        strip.position.set(x, h / 2, b.position.z + 3.1);
-        skylineGroup.add(b, strip);
+        b.position.set(x, h / 2 - 2, -162 - Math.random() * 12);
+        skylineGroup.add(b);
       } else if (roadId === "highway") {
         const hill = new THREE.Mesh(
-          new THREE.ConeGeometry(14 + Math.random() * 6, 14 + Math.random() * 10, 6),
-          new THREE.MeshLambertMaterial({ color: 0x15803d, fog: false })
+          new THREE.SphereGeometry(14 + Math.random() * 6, 10, 8),
+          new THREE.MeshLambertMaterial({ color: 0x2f4820, fog: false })
         );
-        hill.position.set(x, 4, -158 - Math.random() * 10);
+        hill.scale.set(1.3, 0.7, 0.8);
+        hill.position.set(x, 1, -158 - Math.random() * 10);
         skylineGroup.add(hill);
       } else {
         const mesaH = 10 + Math.random() * 12;
         const mesa = new THREE.Mesh(
-          new THREE.CylinderGeometry(5 + Math.random() * 3, 9 + Math.random() * 4, mesaH, 6),
-          new THREE.MeshLambertMaterial({ color: 0x9a3412, fog: false })
+          new THREE.CylinderGeometry(5 + Math.random() * 3, 9 + Math.random() * 4, mesaH, 7),
+          new THREE.MeshLambertMaterial({ color: 0x8c5a3c, fog: false })
         );
         mesa.position.set(x, mesaH / 2 - 1, -158 - Math.random() * 10);
         skylineGroup.add(mesa);
@@ -1138,8 +1211,8 @@
 
   function applyRoadTheme(roadId) {
     const road = ROADS[roadId];
-    scene.background = new THREE.Color(road.sky);
-    scene.fog = new THREE.Fog(road.fog, 48, 145);
+    scene.background = createSkyTexture(road.skyTop, road.skyHorizon);
+    scene.fog = new THREE.Fog(road.fog, 50, 155);
     groundMat.color.setHex(road.ground);
     shoulderMat.color.setHex(road.shoulder);
     asphaltMat.color.setHex(road.asphalt);
@@ -1156,23 +1229,30 @@
     if (playerMesh.userData.beam) {
       playerMesh.userData.beam.visible = road.nightMode;
     }
-    horizonMat.color.setHex(road.nightMode ? 0xff3d71 : road.id === "desert" ? 0xfef08a : 0xfde047);
+    horizonMat.map = createSunGlowTexture(road.nightMode);
+    horizonMat.needsUpdate = true;
+    horizonDisc.position.set(road.nightMode ? -24 : 26, road.nightMode ? 32 : 28, -172);
     buildRoadProps(road.propType);
     buildSkyline(roadId);
     buildRealWorldScenery(roadId);
   }
 
-  // Horizon Sun / Synthwave Disc
-  const horizonMat = new THREE.MeshBasicMaterial({ color: 0xff3d71, fog: false });
-  const horizonDisc = new THREE.Mesh(new THREE.CircleGeometry(18, 32), horizonMat);
-  horizonDisc.position.set(0, 18, -175);
+  // Atmospheric Sun / Moon Soft Halo
+  const horizonMat = new THREE.MeshBasicMaterial({
+    map: createSunGlowTexture(true),
+    transparent: true,
+    depthWrite: false,
+    fog: false,
+  });
+  const horizonDisc = new THREE.Mesh(new THREE.PlaneGeometry(34, 34), horizonMat);
+  horizonDisc.position.set(26, 28, -172);
   scene.add(horizonDisc);
 
-  // 3D Speed Streaks for High-Speed Warp Feel
+  // Subtle Realistic Air-Rush Wisps
   const speedStreaks = [];
-  const streakGeo = new THREE.BoxGeometry(0.06, 0.06, 4.5);
-  const streakMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.45 });
-  for (let i = 0; i < 16; i++) {
+  const streakGeo = new THREE.BoxGeometry(0.03, 0.03, 3.8);
+  const streakMat = new THREE.MeshBasicMaterial({ color: 0xe2e8f0, transparent: true, opacity: 0.14 });
+  for (let i = 0; i < 12; i++) {
     const s = new THREE.Mesh(streakGeo, streakMat);
     const side = i % 2 === 0 ? -1 : 1;
     s.position.set(side * (6.2 + Math.random() * 4), 1.2 + Math.random() * 4.5, 10 - Math.random() * 90);
@@ -1180,10 +1260,10 @@
     speedStreaks.push(s);
   }
 
-  // 3D Collectible Coin Geometry & Material
-  const coinGeo = new THREE.CylinderGeometry(0.65, 0.65, 0.16, 18);
+  // 3D Collectible Metallic Gold Coin Geometry & Material
+  const coinGeo = new THREE.CylinderGeometry(0.6, 0.6, 0.14, 20);
   coinGeo.rotateX(Math.PI / 2);
-  const coinMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24 });
+  const coinMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.9, roughness: 0.16 });
 
   // ---------------------------------------------------------------------------
   // Game State
@@ -2224,6 +2304,7 @@
         if (prop.position.z > 22) prop.position.z -= 18 * 11;
       }
       asphaltTex.offset.y = (asphaltTex.offset.y + demoSpeed3D * dt * 0.1) % 1;
+      terrainTex.offset.y = (terrainTex.offset.y + demoSpeed3D * dt * 0.1) % 1;
       updateWorldScenery(demoSpeed3D, dt);
       for (const s of speedStreaks) {
         s.position.z += demoSpeed3D * 1.45 * dt;
@@ -2335,8 +2416,9 @@
     camera.position.set(player.x * 0.45 + shakeX, 4.7 + shakeY, 9.0);
     camera.lookAt(player.x * 0.65, 1.1, -18);
 
-    // Scroll 3D asphalt texture, lane dashes, roadside props & speed streaks
+    // Scroll 3D asphalt texture, terrain texture, lane dashes, roadside props & speed streaks
     asphaltTex.offset.y = (asphaltTex.offset.y + speed3D * dt * 0.1) % 1;
+    terrainTex.offset.y = (terrainTex.offset.y + speed3D * dt * 0.1) % 1;
     for (const dash of laneDashes) {
       dash.position.z += speed3D * dt;
       if (dash.position.z > 20) dash.position.z -= DASH_COUNT * DASH_STEP;
@@ -2347,7 +2429,7 @@
     }
     updateWorldScenery(speed3D, dt);
     const streakSpeed = speed3D * (player.boosting ? 2.2 : 1.45);
-    streakMat.opacity = player.boosting ? 0.72 : 0.35;
+    streakMat.opacity = player.boosting ? 0.32 : 0.12;
     for (const s of speedStreaks) {
       s.position.z += streakSpeed * dt;
       if (s.position.z > 16) s.position.z -= 95;
