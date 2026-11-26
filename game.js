@@ -307,6 +307,40 @@
       });
     }
 
+    playCoin() {
+      const ac = this.ensureContext();
+      if (!ac) return;
+      const now = ac.currentTime;
+      [880, 1174.66].forEach((freq, i) => {
+        const osc = ac.createOscillator();
+        const gain = ac.createGain();
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(freq, now + i * 0.045);
+        gain.gain.setValueAtTime(0.11, now + i * 0.045);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.045 + 0.14);
+        osc.connect(gain).connect(ac.destination);
+        osc.start(now + i * 0.045);
+        osc.stop(now + i * 0.045 + 0.15);
+      });
+    }
+
+    playLevelUp() {
+      const ac = this.ensureContext();
+      if (!ac) return;
+      const now = ac.currentTime;
+      [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
+        const osc = ac.createOscillator();
+        const gain = ac.createGain();
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(freq, now + i * 0.07);
+        gain.gain.setValueAtTime(0.11, now + i * 0.07);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.22);
+        osc.connect(gain).connect(ac.destination);
+        osc.start(now + i * 0.07);
+        osc.stop(now + i * 0.07 + 0.23);
+      });
+    }
+
     playCrash() {
       const ac = this.ensureContext();
       if (!ac) return;
@@ -488,6 +522,7 @@
     }
 
     // 4 Wheels
+    const wheels = [];
     const wheelOffsets = [
       [-spec.w / 2 + 0.06, 0.36, -spec.len * 0.3],
       [spec.w / 2 - 0.06, 0.36, -spec.len * 0.3],
@@ -499,6 +534,7 @@
       w.position.set(wx, wy, wz);
       w.castShadow = true;
       group.add(w);
+      wheels.push(w);
     });
 
     // Headlights (front = -Z)
@@ -544,7 +580,9 @@
       flameR.visible = false;
       group.add(flameL, flameR);
 
-      group.userData = { tailMat, tlL, tlR, beam, flameL, flameR };
+      group.userData = { wheels, tailMat, tlL, tlR, beam, flameL, flameR };
+    } else {
+      group.userData = { wheels };
     }
 
     return group;
@@ -634,8 +672,32 @@
     if (playerMesh.userData.beam) {
       playerMesh.userData.beam.visible = road.nightMode;
     }
+    horizonMat.color.setHex(road.nightMode ? 0xff3d71 : road.id === "desert" ? 0xfef08a : 0xfde047);
     buildRoadProps(road.propType);
   }
+
+  // Horizon Sun / Synthwave Disc
+  const horizonMat = new THREE.MeshBasicMaterial({ color: 0xff3d71, fog: false });
+  const horizonDisc = new THREE.Mesh(new THREE.CircleGeometry(18, 32), horizonMat);
+  horizonDisc.position.set(0, 18, -175);
+  scene.add(horizonDisc);
+
+  // 3D Speed Streaks for High-Speed Warp Feel
+  const speedStreaks = [];
+  const streakGeo = new THREE.BoxGeometry(0.06, 0.06, 4.5);
+  const streakMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.45 });
+  for (let i = 0; i < 16; i++) {
+    const s = new THREE.Mesh(streakGeo, streakMat);
+    const side = i % 2 === 0 ? -1 : 1;
+    s.position.set(side * (6.2 + Math.random() * 4), 1.2 + Math.random() * 4.5, 10 - Math.random() * 90);
+    scene.add(s);
+    speedStreaks.push(s);
+  }
+
+  // 3D Collectible Coin Geometry & Material
+  const coinGeo = new THREE.CylinderGeometry(0.65, 0.65, 0.16, 18);
+  coinGeo.rotateX(Math.PI / 2);
+  const coinMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24 });
 
   // ---------------------------------------------------------------------------
   // Game State
@@ -664,7 +726,13 @@
   let shakeTime = 0;
 
   let traffic = [];
+  let coins = [];
   let particles = [];
+  let coinTimer = 0;
+  let coinCombo = 0;
+  let comboTimer = 0;
+  let level = 1;
+  let nextLevelDist = 500;
   let lastFrameTime = 0;
 
   // ---------------------------------------------------------------------------
@@ -731,8 +799,10 @@
 
   function clearTrafficAndParticles() {
     for (const car of traffic) scene.remove(car.mesh);
+    for (const coin of coins) scene.remove(coin.mesh);
     for (const p of particles) scene.remove(p.mesh);
     traffic = [];
+    coins = [];
     particles = [];
   }
 
@@ -761,6 +831,11 @@
     nearMisses = 0;
     elapsedTime = 0;
     spawnTimer = 0.45;
+    coinTimer = 1.1;
+    coinCombo = 0;
+    comboTimer = 0;
+    level = 1;
+    nextLevelDist = 500;
     crashTimer = 0;
     shakeTime = 0;
 
@@ -1327,16 +1402,22 @@
     speed += (activeSpeed - speed) * Math.min(1, dt * lerpRate);
     const speed3D = speed * SPEED_TO_3D;
 
-    // Smooth player lane interpolation & 3D tilt
+    // Smooth player lane interpolation, suspension bounce & 3D tilt
     const targetX = getLaneCenterX(player.lane);
     player.x += (targetX - player.x) * Math.min(1, dt * 15);
     player.tilt += (0 - player.tilt) * Math.min(1, dt * 10);
     playerMesh.position.x = player.x;
+    playerMesh.position.y = Math.sin(elapsedTime * 28) * 0.025;
     playerMesh.rotation.z = player.tilt;
     playerMesh.rotation.y = player.tilt * 0.45;
+    const targetPitch = player.boosting ? 0.04 : player.braking ? -0.05 : 0;
+    playerMesh.rotation.x += (targetPitch - playerMesh.rotation.x) * Math.min(1, dt * 10);
 
-    // Visual brake lights & nitro flames
+    // Spin player wheels & animate brake lights / nitro flames
     const ud = playerMesh.userData;
+    if (ud && ud.wheels) {
+      for (const w of ud.wheels) w.rotation.x -= speed3D * dt * 1.6;
+    }
     if (ud && ud.tailMat) {
       ud.tailMat.color.setHex(player.braking ? 0xff1744 : 0xff2a55);
       const scale = player.braking ? 1.45 : 1;
@@ -1363,7 +1444,7 @@
     camera.position.set(player.x * 0.45 + shakeX, 4.7 + shakeY, 9.0);
     camera.lookAt(player.x * 0.65, 1.1, -18);
 
-    // Scroll 3D lane dashes & roadside props
+    // Scroll 3D lane dashes, roadside props & speed streaks
     for (const dash of laneDashes) {
       dash.position.z += speed3D * dt;
       if (dash.position.z > 20) dash.position.z -= DASH_COUNT * DASH_STEP;
@@ -1372,11 +1453,85 @@
       prop.position.z += speed3D * dt;
       if (prop.position.z > 22) prop.position.z -= 18 * 11;
     }
+    const streakSpeed = speed3D * (player.boosting ? 2.2 : 1.45);
+    streakMat.opacity = player.boosting ? 0.72 : 0.35;
+    for (const s of speedStreaks) {
+      s.position.z += streakSpeed * dt;
+      if (s.position.z > 16) s.position.z -= 95;
+    }
 
-    // Score & Distance
+    // Score, Distance & 500m Level-Up Milestones
     const boostMult = player.boosting ? 1.5 : 1;
     score += dt * 28 * mode.scoreMult * boostMult;
     distanceMeters += (speed * dt) / 16;
+    if (distanceMeters >= nextLevelDist) {
+      level += 1;
+      nextLevelDist += 500;
+      sfx.playLevelUp();
+      showCallout(`🏁 LEVEL ${level} — HYPER DRIVE!`);
+    }
+
+    // Collectible 3D Turbo Coins
+    if (comboTimer > 0) {
+      comboTimer -= dt;
+      if (comboTimer <= 0) coinCombo = 0;
+    }
+    coinTimer -= dt;
+    if (coinTimer <= 0) {
+      coinTimer = 1.25 + Math.random() * 0.9;
+      const openCoinLanes = [0, 1, 2].filter(
+        (l) => !traffic.some((c) => (c.lane === l || c.targetLane === l) && c.z < SPAWN_Z + 18)
+      );
+      if (openCoinLanes.length > 0) {
+        const laneIdx = openCoinLanes[Math.floor(Math.random() * openCoinLanes.length)];
+        const mesh = new THREE.Mesh(coinGeo, coinMat);
+        const x = getLaneCenterX(laneIdx);
+        mesh.position.set(x, 1.05, SPAWN_Z);
+        scene.add(mesh);
+        coins.push({ mesh, x, z: SPAWN_Z });
+      }
+    }
+    for (let i = coins.length - 1; i >= 0; i--) {
+      const coin = coins[i];
+      coin.z += speed3D * 0.86 * dt;
+      coin.mesh.position.z = coin.z;
+      coin.mesh.position.y = 1.05 + Math.sin(elapsedTime * 5 + coin.z * 0.2) * 0.18;
+      coin.mesh.rotation.y += 4.5 * dt;
+
+      if (Math.abs(player.x - coin.x) < 1.45 && Math.abs(coin.z) < 2.6) {
+        coinCombo = Math.min(5, coinCombo + 1);
+        comboTimer = 3.5;
+        const pts = Math.round(75 * coinCombo * mode.scoreMult);
+        score += pts;
+        sfx.playCoin();
+        showCallout(coinCombo > 1 ? `+${pts} COIN x${coinCombo}!` : `+${pts} COIN!`);
+        // Golden sparkle burst
+        const sparkGeo = new THREE.BoxGeometry(0.18, 0.18, 0.18);
+        for (let k = 0; k < 8; k++) {
+          const mat = new THREE.MeshBasicMaterial({ color: 0xfef08a, transparent: true, opacity: 1 });
+          const m = new THREE.Mesh(sparkGeo, mat);
+          m.position.set(coin.x, 1.0, 0);
+          scene.add(m);
+          const ang = Math.random() * Math.PI * 2;
+          particles.push({
+            mesh: m,
+            mat,
+            vx: Math.cos(ang) * 5,
+            vy: 3 + Math.random() * 5,
+            vz: Math.sin(ang) * 5,
+            life: 0.35,
+            maxLife: 0.35,
+          });
+        }
+        scene.remove(coin.mesh);
+        coins.splice(i, 1);
+        continue;
+      }
+      if (coin.z > DESPAWN_Z) {
+        scene.remove(coin.mesh);
+        coins.splice(i, 1);
+      }
+    }
 
     // Spawning
     spawnTimer -= dt;
@@ -1435,6 +1590,9 @@
       if (Math.abs(carTargetX - car.x) < 0.2) car.lane = car.targetLane;
 
       car.mesh.position.set(car.x, 0, car.z);
+      if (car.mesh.userData && car.mesh.userData.wheels) {
+        for (const w of car.mesh.userData.wheels) w.rotation.x -= speed3D * 0.45 * dt;
+      }
 
       // Collision check (any hit = instant fail)
       if (
