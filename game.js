@@ -1354,14 +1354,16 @@
   const MP_FINISH_BY_MODE = { easy: 6000, hard: 8000, extreme: 10500 };
   const MP_MAX_SECONDS = 210; // 3m 30s max multiplayer match length
 
-  // Online Multiplayer (PeerJS) State
+  // Online Multiplayer (WSS Pub/Sub via MQTT over WebSockets — works across all mobile/WiFi networks)
   const mp = {
     active: false,
     isHost: false,
-    peer: null,
-    conn: null,
+    client: null,
+    connected: false,
     roomCode: "",
     syncTimer: 0,
+    joinRetryTimer: null,
+    joinTimeoutTimer: null,
     resultReason: "",
     friend: {
       x: 0,
@@ -1373,12 +1375,12 @@
   };
 
   function sendMp(payload) {
-    if (mp.conn && mp.conn.open) {
-      try {
-        mp.conn.send(payload);
-      } catch {
-        // Ignore transient send errors
-      }
+    if (!mp.client || !mp.client.connected || !mp.roomCode) return;
+    const channel = mp.isHost ? "host" : "guest";
+    try {
+      mp.client.publish(`turbolane3/room/${mp.roomCode}/${channel}`, JSON.stringify(payload));
+    } catch {
+      // Ignore transient publish errors
     }
   }
 
@@ -1865,7 +1867,7 @@
   document.getElementById("btn-menu-over").addEventListener("click", goToMenu);
 
   // ---------------------------------------------------------------------------
-  // Online Multiplayer Lobby (PeerJS WebRTC)
+  // Online Multiplayer Lobby (WebSocket Relay — works on 4G/5G/WiFi)
   // ---------------------------------------------------------------------------
   const screenMulti = document.getElementById("screen-multi");
   const mpHostIdle = document.getElementById("mp-host-idle");
@@ -1877,6 +1879,11 @@
   const btnMpCopyLink = document.getElementById("btn-mp-copy-link");
   const btnMpJoin = document.getElementById("btn-mp-join");
   const btnMpStart = document.getElementById("btn-mp-start");
+
+  const WSS_BROKERS = [
+    "wss://broker.emqx.io:8084/mqtt",
+    "wss://broker.hivemq.com:8884/mqtt",
+  ];
 
   function setMpStatus(msg) {
     mpStatusEl.textContent = msg;
@@ -1891,6 +1898,30 @@
   function closeMultiLobby() {
     screenMulti.classList.add("hidden");
     screenMenu.classList.remove("hidden");
+  }
+
+  function clearMpTimers() {
+    if (mp.joinRetryTimer) {
+      clearInterval(mp.joinRetryTimer);
+      mp.joinRetryTimer = null;
+    }
+    if (mp.joinTimeoutTimer) {
+      clearTimeout(mp.joinTimeoutTimer);
+      mp.joinTimeoutTimer = null;
+    }
+  }
+
+  function cleanupMpClient() {
+    clearMpTimers();
+    mp.connected = false;
+    if (mp.client) {
+      try {
+        mp.client.end(true);
+      } catch {
+        // Ignore cleanup errors
+      }
+      mp.client = null;
+    }
   }
 
   function spawnSyncedTraffic(items) {
@@ -1925,121 +1956,142 @@
     coins.push({ mesh, x, z: SPAWN_Z });
   }
 
-  function bindPeerConnection(conn) {
-    mp.conn = conn;
-    conn.on("open", () => {
-      if (mp.isHost) {
-        setMpStatus("✅ Friend connected! Click START MULTIPLAYER RACE.");
-        btnMpStart.classList.remove("hidden");
-      } else {
-        setMpStatus("✅ Connected to Host! Waiting for Host to start...");
+  function handleMpMessage(data) {
+    if (!data || !data.type) return;
+    if (data.type === "hello" && mp.isHost) {
+      mp.connected = true;
+      sendMp({ type: "welcome" });
+      setMpStatus("✅ Friend connected! Click START MULTIPLAYER RACE.");
+      btnMpStart.classList.remove("hidden");
+    } else if (data.type === "welcome" && !mp.isHost) {
+      mp.connected = true;
+      clearMpTimers();
+      setMpStatus("✅ Connected to Host! Waiting for Host to start...");
+    } else if (data.type === "start") {
+      selectedMode = data.mode || selectedMode;
+      selectedRoad = data.road || selectedRoad;
+      updateMenuUI();
+      startGame(true);
+    } else if (data.type === "spawn" && !mp.isHost) {
+      spawnSyncedTraffic(data.items || []);
+    } else if (data.type === "coin" && !mp.isHost) {
+      spawnSyncedCoin(data.lane);
+    } else if (data.type === "state") {
+      mp.friend.targetX = data.x;
+      mp.friend.tilt = data.tilt || 0;
+      mp.friend.score = data.score || 0;
+      mp.friend.alive = data.alive !== false;
+      hudFriendScore.textContent = Math.floor(mp.friend.score).toLocaleString();
+    } else if (data.type === "crash") {
+      mp.friend.alive = false;
+      mp.friend.score = data.score || mp.friend.score;
+      friendMesh.visible = false;
+      hudFriendScore.textContent = `${Math.floor(mp.friend.score).toLocaleString()} 💥`;
+      if (state === "playing") {
+        mp.resultReason = "friend_crashed";
+        sfx.stopMusic();
+        sfx.playLevelUp();
+        finishGameOver();
+      }
+    } else if (data.type === "finish") {
+      mp.friend.score = data.score || mp.friend.score;
+      hudFriendScore.textContent = `${Math.floor(mp.friend.score).toLocaleString()} 🏁`;
+      if (state === "playing") {
+        mp.resultReason = "friend_finished";
+        sfx.stopMusic();
+        finishGameOver();
+      }
+    } else if (data.type === "rematch_request" && mp.isHost) {
+      overMpResult.textContent = "🔄 Friend wants a rematch! Click RACE AGAIN.";
+    }
+  }
+
+  function connectWssRoom(brokerIdx = 0) {
+    if (typeof mqtt === "undefined") {
+      setMpStatus("⏳ Loading multiplayer, retrying...");
+      setTimeout(() => connectWssRoom(brokerIdx), 700);
+      return;
+    }
+
+    cleanupMpClient();
+    const url = WSS_BROKERS[brokerIdx] || WSS_BROKERS[0];
+    const client = mqtt.connect(url, {
+      clientId: `tl3_${mp.isHost ? "h" : "g"}_${Math.random().toString(36).slice(2, 8)}`,
+      connectTimeout: 5000,
+      reconnectPeriod: 0,
+      clean: true,
+    });
+    mp.client = client;
+
+    const fallbackTimer = setTimeout(() => {
+      if (!client.connected && brokerIdx + 1 < WSS_BROKERS.length) {
+        connectWssRoom(brokerIdx + 1);
+      }
+    }, 4500);
+
+    client.on("connect", () => {
+      clearTimeout(fallbackTimer);
+      const listenChannel = mp.isHost ? "guest" : "host";
+      client.subscribe(`turbolane3/room/${mp.roomCode}/${listenChannel}`, (err) => {
+        if (err) {
+          setMpStatus("⚠️ Could not subscribe to room. Try again.");
+          return;
+        }
+        if (mp.isHost) {
+          setMpStatus(`⏳ Waiting for friend to join room ${mp.roomCode}...`);
+        } else {
+          setMpStatus(`⏳ Connecting to room ${mp.roomCode}...`);
+          sendMp({ type: "hello" });
+          mp.joinRetryTimer = setInterval(() => {
+            if (!mp.connected) sendMp({ type: "hello" });
+          }, 1200);
+          mp.joinTimeoutTimer = setTimeout(() => {
+            if (!mp.connected) {
+              clearMpTimers();
+              setMpStatus(`⚠️ Room ${mp.roomCode} not found or Host is not waiting. Ask Host to recreate room.`);
+            }
+          }, 12000);
+        }
+      });
+    });
+
+    client.on("message", (_topic, payload) => {
+      try {
+        handleMpMessage(JSON.parse(payload.toString()));
+      } catch {
+        // Ignore malformed packets
       }
     });
 
-    conn.on("data", (data) => {
-      if (!data || !data.type) return;
-      if (data.type === "start") {
-        selectedMode = data.mode || selectedMode;
-        selectedRoad = data.road || selectedRoad;
-        updateMenuUI();
-        startGame(true);
-      } else if (data.type === "spawn" && !mp.isHost) {
-        spawnSyncedTraffic(data.items || []);
-      } else if (data.type === "coin" && !mp.isHost) {
-        spawnSyncedCoin(data.lane);
-      } else if (data.type === "state") {
-        mp.friend.targetX = data.x;
-        mp.friend.tilt = data.tilt || 0;
-        mp.friend.score = data.score || 0;
-        mp.friend.alive = data.alive !== false;
-        hudFriendScore.textContent = Math.floor(mp.friend.score).toLocaleString();
-      } else if (data.type === "crash") {
-        mp.friend.alive = false;
-        mp.friend.score = data.score || mp.friend.score;
-        friendMesh.visible = false;
-        hudFriendScore.textContent = `${Math.floor(mp.friend.score).toLocaleString()} 💥`;
-        if (state === "playing") {
-          mp.resultReason = "friend_crashed";
-          sfx.stopMusic();
-          sfx.playLevelUp();
-          finishGameOver();
-        }
-      } else if (data.type === "finish") {
-        mp.friend.score = data.score || mp.friend.score;
-        hudFriendScore.textContent = `${Math.floor(mp.friend.score).toLocaleString()} 🏁`;
-        if (state === "playing") {
-          mp.resultReason = "friend_finished";
-          sfx.stopMusic();
-          finishGameOver();
-        }
-      } else if (data.type === "rematch_request" && mp.isHost) {
-        overMpResult.textContent = "🔄 Friend wants a rematch! Click RACE AGAIN.";
+    client.on("error", () => {
+      clearTimeout(fallbackTimer);
+      if (!mp.connected && brokerIdx + 1 < WSS_BROKERS.length) {
+        connectWssRoom(brokerIdx + 1);
+      } else if (!mp.connected) {
+        setMpStatus("⚠️ Network error connecting to room. Please try again.");
       }
-    });
-
-    conn.on("close", () => {
-      setMpStatus("⚠️ Friend disconnected.");
-      btnMpStart.classList.add("hidden");
     });
   }
 
-  const PEER_CONFIG = {
-    config: {
-      iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" },
-        { urls: "stun:stun2.l.google.com:19302" },
-      ],
-    },
-  };
-
   function createRoom() {
-    if (typeof Peer === "undefined") {
-      setMpStatus("⚠️ Multiplayer library still loading, try again in a second.");
-      return;
-    }
-    if (mp.peer) mp.peer.destroy();
     const code = Math.random().toString(36).substring(2, 7).toUpperCase();
     mp.roomCode = code;
     mp.isHost = true;
     mpHostIdle.classList.add("hidden");
     mpHostActive.classList.remove("hidden");
+    btnMpStart.classList.add("hidden");
     mpRoomCodeEl.textContent = code;
     setMpStatus("⏳ Creating room...");
-
-    mp.peer = new Peer(`tl3-${code}`, PEER_CONFIG);
-    mp.peer.on("open", () => {
-      setMpStatus(`⏳ Waiting for friend to join room ${code}...`);
-    });
-    mp.peer.on("connection", (conn) => {
-      bindPeerConnection(conn);
-    });
-    mp.peer.on("error", (err) => {
-      setMpStatus(`⚠️ Connection error: ${err.type || "try again"}`);
-    });
+    connectWssRoom(0);
   }
 
   function joinRoom(rawCode) {
     const code = (rawCode || mpJoinInput.value).trim().toUpperCase();
     if (!code) return;
-    if (typeof Peer === "undefined") {
-      setMpStatus("⏳ Loading multiplayer, retrying...");
-      setTimeout(() => joinRoom(code), 800);
-      return;
-    }
-    if (mp.peer) mp.peer.destroy();
     mp.roomCode = code;
     mp.isHost = false;
     setMpStatus(`⏳ Joining room ${code}...`);
-
-    mp.peer = new Peer(PEER_CONFIG);
-    mp.peer.on("open", () => {
-      const conn = mp.peer.connect(`tl3-${code}`, { reliable: true });
-      bindPeerConnection(conn);
-    });
-    mp.peer.on("error", () => {
-      setMpStatus(`⚠️ Could not find room ${code}. Check the code and try again.`);
-    });
+    connectWssRoom(0);
   }
 
   document.getElementById("btn-multiplayer").addEventListener("click", openMultiLobby);
@@ -2047,7 +2099,7 @@
   btnMpCreate.addEventListener("click", createRoom);
   btnMpJoin.addEventListener("click", () => joinRoom());
   btnMpStart.addEventListener("click", () => {
-    if (!mp.isHost || !mp.conn || !mp.conn.open) return;
+    if (!mp.isHost || !mp.connected) return;
     sendMp({ type: "start", mode: selectedMode, road: selectedRoad });
     startGame(true);
   });
