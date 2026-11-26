@@ -1370,19 +1370,67 @@
       return;
     }
 
-    // Gentle idle animation on menu
+    // Live 3D Attract-Mode Demo Race on Menu
     if (state === "menu") {
-      const idleSpeed3D = 12;
+      const demoSpeed3D = 26;
+      const demoTime = performance.now() * 0.001;
       for (const dash of laneDashes) {
-        dash.position.z += idleSpeed3D * dt;
+        dash.position.z += demoSpeed3D * dt;
         if (dash.position.z > 20) dash.position.z -= DASH_COUNT * DASH_STEP;
       }
       for (const prop of propItems) {
-        prop.position.z += idleSpeed3D * dt;
+        prop.position.z += demoSpeed3D * dt;
         if (prop.position.z > 22) prop.position.z -= 18 * 11;
       }
-      camera.position.set(0, 4.6, 8.8);
-      camera.lookAt(0, 1.0, -18);
+      for (const s of speedStreaks) {
+        s.position.z += demoSpeed3D * 1.45 * dt;
+        if (s.position.z > 16) s.position.z -= 95;
+      }
+
+      // Spawn & move demo traffic
+      spawnTimer -= dt;
+      if (spawnTimer <= 0) {
+        spawnTraffic();
+        spawnTimer = 0.95;
+      }
+      for (let i = traffic.length - 1; i >= 0; i--) {
+        const car = traffic[i];
+        car.z += demoSpeed3D * 0.74 * dt;
+        car.mesh.position.set(car.x, 0, car.z);
+        if (car.mesh.userData && car.mesh.userData.wheels) {
+          for (const w of car.mesh.userData.wheels) w.rotation.x -= demoSpeed3D * 0.45 * dt;
+        }
+        if (car.z > DESPAWN_Z) {
+          scene.remove(car.mesh);
+          traffic.splice(i, 1);
+        }
+      }
+
+      // AI auto-dodge for demo player car
+      const blockedAhead = traffic.some(
+        (c) => c.targetLane === player.lane && c.z > -38 && c.z < 5
+      );
+      if (blockedAhead) {
+        const safeDemoLane = [0, 1, 2].find(
+          (l) => !traffic.some((c) => c.targetLane === l && c.z > -40 && c.z < 6)
+        );
+        if (safeDemoLane !== undefined && safeDemoLane !== player.lane) {
+          player.tilt = safeDemoLane > player.lane ? -0.14 : 0.14;
+          player.lane = safeDemoLane;
+        }
+      }
+
+      const targetX = getLaneCenterX(player.lane);
+      player.x += (targetX - player.x) * Math.min(1, dt * 10);
+      player.tilt += (0 - player.tilt) * Math.min(1, dt * 8);
+      playerMesh.position.set(player.x, Math.sin(demoTime * 22) * 0.02, 0);
+      playerMesh.rotation.set(0, player.tilt * 0.4, player.tilt);
+      if (playerMesh.userData && playerMesh.userData.wheels) {
+        for (const w of playerMesh.userData.wheels) w.rotation.x -= demoSpeed3D * dt * 1.5;
+      }
+
+      camera.position.set(player.x * 0.35 + Math.sin(demoTime * 0.6) * 0.8, 4.7, 9.2);
+      camera.lookAt(player.x * 0.5, 1.1, -18);
       return;
     }
 
@@ -1631,11 +1679,29 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Init
+  // Init & Splash Loading Sequence
   // ---------------------------------------------------------------------------
   resizeRenderer();
   applyRoadTheme(selectedRoad);
   updateMenuUI();
   lastFrameTime = performance.now();
   requestAnimationFrame(loop);
+
+  const screenLoading = document.getElementById("screen-loading");
+  const loadingBarFill = document.getElementById("loading-bar-fill");
+  const loadingText = document.getElementById("loading-text");
+  if (screenLoading && loadingBarFill) {
+    setTimeout(() => {
+      loadingBarFill.style.width = "45%";
+      if (loadingText) loadingText.textContent = "Building 3D Highway...";
+    }, 80);
+    setTimeout(() => {
+      loadingBarFill.style.width = "100%";
+      if (loadingText) loadingText.textContent = "Ready to Race!";
+    }, 420);
+    setTimeout(() => {
+      screenLoading.classList.add("fade-out");
+      setTimeout(() => screenLoading.classList.add("hidden"), 480);
+    }, 750);
+  }
 })();

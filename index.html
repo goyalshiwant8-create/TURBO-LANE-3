@@ -8,6 +8,18 @@
 </head>
 <body>
   <div id="app">
+    <!-- Loading Splash Screen -->
+    <div id="screen-loading" class="loading-overlay" aria-label="Loading game">
+      <div class="loading-box">
+        <span class="brand-tag">3D ARCADE RACER</span>
+        <h1 class="loading-title">TURBO LANE 3</h1>
+        <div class="loading-bar-track">
+          <div id="loading-bar-fill" class="loading-bar-fill"></div>
+        </div>
+        <p id="loading-text" class="loading-text">Starting 3D Engine...</p>
+      </div>
+    </div>
+
     <!-- Top HUD (visible during gameplay) -->
     <header id="hud" class="hidden" aria-label="Game status">
       <div class="hud-group">
