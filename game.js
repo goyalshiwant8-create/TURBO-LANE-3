@@ -900,7 +900,8 @@
   let nextLevelDist = 500;
   let lastFrameTime = 0;
 
-  const MP_FINISH_METERS = 1000;
+  const MP_FINISH_BY_MODE = { easy: 6000, hard: 8000, extreme: 10500 };
+  const MP_MAX_SECONDS = 210; // 3m 30s max multiplayer match length
 
   // Online Multiplayer (PeerJS) State
   const mp = {
@@ -1188,12 +1189,23 @@
     const overSub = screenGameover.querySelector(".subtitle");
 
     if (mp.active) {
+      const targetFinish = MP_FINISH_BY_MODE[selectedMode] || 6000;
       const fScore = Math.floor(mp.friend.score);
       if (mp.resultReason === "finished_first") {
-        overTag.textContent = "🏁 1000m FINISH!";
+        overTag.textContent = `🏁 ${targetFinish}m FINISH!`;
         overTitle.textContent = "YOU WIN!";
         overSub.textContent = "You reached the finish line first!";
         overMpResult.textContent = `🏆 1ST PLACE! (Friend: ${fScore.toLocaleString()})`;
+      } else if (mp.resultReason === "time_win") {
+        overTag.textContent = "⏱️ TIME UP!";
+        overTitle.textContent = "YOU WIN!";
+        overSub.textContent = "You led on score at the 3:30 finish!";
+        overMpResult.textContent = `🏆 WINNER! (${finalScore.toLocaleString()} vs ${fScore.toLocaleString()})`;
+      } else if (mp.resultReason === "time_loss") {
+        overTag.textContent = "⏱️ TIME UP!";
+        overTitle.textContent = "2ND PLACE";
+        overSub.textContent = "Your friend led at the 3:30 finish!";
+        overMpResult.textContent = `🥈 FRIEND WINS! (${finalScore.toLocaleString()} vs ${fScore.toLocaleString()})`;
       } else if (mp.resultReason === "friend_crashed") {
         overTag.textContent = "🏆 VICTORY!";
         overTitle.textContent = "YOU WIN!";
@@ -1202,7 +1214,7 @@
       } else if (mp.resultReason === "friend_finished") {
         overTag.textContent = "🏁 RACE OVER";
         overTitle.textContent = "2ND PLACE";
-        overSub.textContent = "Your friend reached 1000m first!";
+        overSub.textContent = `Your friend reached ${targetFinish}m first!`;
         overMpResult.textContent = `🥈 FRIEND WINS! (Friend: ${fScore.toLocaleString()})`;
       } else {
         overTag.textContent = "CRASHED!";
@@ -2023,26 +2035,42 @@
     distanceMeters += (speed * dt) / 16;
 
     if (mp.active) {
-      const pct = Math.min(100, (distanceMeters / MP_FINISH_METERS) * 100);
+      const targetFinish = MP_FINISH_BY_MODE[selectedMode] || 6000;
+      const timeLeft = Math.max(0, Math.ceil(MP_MAX_SECONDS - elapsedTime));
+      const mins = Math.floor(timeLeft / 60);
+      const secs = String(timeLeft % 60).padStart(2, "0");
+      hudModeBadge.textContent = `${mode.label.toUpperCase()} • ${mins}:${secs}`;
+
+      const pct = Math.min(100, Math.max((distanceMeters / targetFinish) * 100, (elapsedTime / MP_MAX_SECONDS) * 100));
       hudProgressFill.style.width = `${pct}%`;
-      const metersLeft = MP_FINISH_METERS - distanceMeters;
+      const metersLeft = targetFinish - distanceMeters;
       if (metersLeft <= 130 && metersLeft > -15) {
         finishArch.visible = true;
         finishArch.position.z = -metersLeft * 1.1;
       } else {
         finishArch.visible = false;
       }
+
+      if (distanceMeters >= targetFinish) {
+        mp.resultReason = "finished_first";
+        sendMp({ type: "finish", score: Math.floor(score) });
+        sfx.stopMusic();
+        sfx.playLevelUp();
+        finishGameOver();
+        return;
+      }
+      if (elapsedTime >= MP_MAX_SECONDS) {
+        const myScore = Math.floor(score);
+        const fScore = Math.floor(mp.friend.score);
+        mp.resultReason = myScore >= fScore ? "time_win" : "time_loss";
+        sfx.stopMusic();
+        if (myScore >= fScore) sfx.playLevelUp();
+        finishGameOver();
+        return;
+      }
     } else {
       const stagePct = ((distanceMeters % 500) / 500) * 100;
       hudProgressFill.style.width = `${stagePct}%`;
-    }
-    if (mp.active && distanceMeters >= MP_FINISH_METERS) {
-      mp.resultReason = "finished_first";
-      sendMp({ type: "finish", score: Math.floor(score) });
-      sfx.stopMusic();
-      sfx.playLevelUp();
-      finishGameOver();
-      return;
     }
     if (distanceMeters >= nextLevelDist) {
       level += 1;
