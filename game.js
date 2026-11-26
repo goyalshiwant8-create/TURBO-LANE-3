@@ -742,6 +742,8 @@
   let nextLevelDist = 500;
   let lastFrameTime = 0;
 
+  const MP_FINISH_METERS = 1000;
+
   // Online Multiplayer (PeerJS) State
   const mp = {
     active: false,
@@ -750,6 +752,7 @@
     conn: null,
     roomCode: "",
     syncTimer: 0,
+    resultReason: "",
     friend: {
       x: 0,
       targetX: 0,
@@ -861,6 +864,7 @@
     playerMesh.rotation.set(0, 0, 0);
 
     if (mp.active) {
+      mp.resultReason = "";
       mp.friend.alive = true;
       mp.friend.score = 0;
       mp.friend.x = getLaneCenterX(mp.isHost ? 2 : 0);
@@ -946,6 +950,7 @@
     sfx.stopMusic();
     sfx.playCrash();
     if (mp.active) {
+      mp.resultReason = "crashed";
       sendMp({ type: "crash", score: Math.floor(score) });
     }
 
@@ -995,14 +1000,38 @@
     overNearmiss.textContent = String(nearMisses);
     overNewBest.classList.toggle("hidden", !isNewBest);
 
+    const overTag = screenGameover.querySelector(".crash-tag");
+    const overTitle = screenGameover.querySelector("h2");
+    const overSub = screenGameover.querySelector(".subtitle");
+
     if (mp.active) {
       const fScore = Math.floor(mp.friend.score);
-      const youWon = !mp.friend.alive || finalScore > fScore;
-      overMpResult.textContent = youWon
-        ? `🏆 YOU WIN! (Friend: ${fScore.toLocaleString()})`
-        : `🥈 FRIEND WINS! (Friend: ${fScore.toLocaleString()})`;
+      if (mp.resultReason === "finished_first") {
+        overTag.textContent = "🏁 1000m FINISH!";
+        overTitle.textContent = "YOU WIN!";
+        overSub.textContent = "You reached the finish line first!";
+        overMpResult.textContent = `🏆 1ST PLACE! (Friend: ${fScore.toLocaleString()})`;
+      } else if (mp.resultReason === "friend_crashed") {
+        overTag.textContent = "🏆 VICTORY!";
+        overTitle.textContent = "YOU WIN!";
+        overSub.textContent = "Your friend crashed first!";
+        overMpResult.textContent = `🏆 YOU SURVIVED! (Friend: ${fScore.toLocaleString()})`;
+      } else if (mp.resultReason === "friend_finished") {
+        overTag.textContent = "🏁 RACE OVER";
+        overTitle.textContent = "2ND PLACE";
+        overSub.textContent = "Your friend reached 1000m first!";
+        overMpResult.textContent = `🥈 FRIEND WINS! (Friend: ${fScore.toLocaleString()})`;
+      } else {
+        overTag.textContent = "CRASHED!";
+        overTitle.textContent = "RACE FAILED";
+        overSub.textContent = "You hit another vehicle.";
+        overMpResult.textContent = `🥈 FRIEND WINS! (Friend: ${fScore.toLocaleString()})`;
+      }
       overMpResult.classList.remove("hidden");
     } else {
+      overTag.textContent = "CRASHED!";
+      overTitle.textContent = "RACE FAILED";
+      overSub.textContent = "You hit another vehicle.";
       overMpResult.classList.add("hidden");
     }
 
@@ -1271,7 +1300,18 @@
         friendMesh.visible = false;
         hudFriendScore.textContent = `${Math.floor(mp.friend.score).toLocaleString()} 💥`;
         if (state === "playing") {
-          showCallout("🏆 FRIEND CRASHED — YOU WIN!");
+          mp.resultReason = "friend_crashed";
+          sfx.stopMusic();
+          sfx.playLevelUp();
+          finishGameOver();
+        }
+      } else if (data.type === "finish") {
+        mp.friend.score = data.score || mp.friend.score;
+        hudFriendScore.textContent = `${Math.floor(mp.friend.score).toLocaleString()} 🏁`;
+        if (state === "playing") {
+          mp.resultReason = "friend_finished";
+          sfx.stopMusic();
+          finishGameOver();
         }
       }
     });
@@ -1778,10 +1818,18 @@
       if (s.position.z > 16) s.position.z -= 95;
     }
 
-    // Score, Distance & 500m Level-Up Milestones
+    // Score, Distance & 500m Level-Up Milestones (1000m Finish Line in Multiplayer)
     const boostMult = player.boosting ? 1.5 : 1;
     score += dt * 28 * mode.scoreMult * boostMult;
     distanceMeters += (speed * dt) / 16;
+    if (mp.active && distanceMeters >= MP_FINISH_METERS) {
+      mp.resultReason = "finished_first";
+      sendMp({ type: "finish", score: Math.floor(score) });
+      sfx.stopMusic();
+      sfx.playLevelUp();
+      finishGameOver();
+      return;
+    }
     if (distanceMeters >= nextLevelDist) {
       level += 1;
       nextLevelDist += 500;
