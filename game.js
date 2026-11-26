@@ -9,42 +9,42 @@
       id: "easy",
       label: "Easy",
       badgeClass: "",
-      baseSpeed: 330,
-      maxSpeed: 560,
-      accelPerSec: 6,
-      spawnInterval: 1.25,
-      minSpawnInterval: 0.72,
-      spawnRampPerSec: 0.008,
-      doubleSpawnChance: 0.18,
-      laneChangeChance: 0,
+      baseSpeed: 390,
+      maxSpeed: 640,
+      accelPerSec: 8,
+      spawnInterval: 1.05,
+      minSpawnInterval: 0.58,
+      spawnRampPerSec: 0.01,
+      doubleSpawnChance: 0.28,
+      laneChangeChance: 0.08,
       scoreMult: 1,
     },
     hard: {
       id: "hard",
       label: "Hard",
       badgeClass: "hard",
-      baseSpeed: 460,
-      maxSpeed: 780,
-      accelPerSec: 11,
-      spawnInterval: 0.92,
-      minSpawnInterval: 0.46,
-      spawnRampPerSec: 0.012,
-      doubleSpawnChance: 0.38,
-      laneChangeChance: 0.14,
+      baseSpeed: 540,
+      maxSpeed: 880,
+      accelPerSec: 13,
+      spawnInterval: 0.78,
+      minSpawnInterval: 0.38,
+      spawnRampPerSec: 0.014,
+      doubleSpawnChance: 0.52,
+      laneChangeChance: 0.26,
       scoreMult: 1.6,
     },
     extreme: {
       id: "extreme",
       label: "Extreme Hard",
       badgeClass: "extreme",
-      baseSpeed: 610,
-      maxSpeed: 1050,
-      accelPerSec: 16,
-      spawnInterval: 0.68,
-      minSpawnInterval: 0.32,
-      spawnRampPerSec: 0.016,
-      doubleSpawnChance: 0.56,
-      laneChangeChance: 0.28,
+      baseSpeed: 700,
+      maxSpeed: 1180,
+      accelPerSec: 19,
+      spawnInterval: 0.55,
+      minSpawnInterval: 0.26,
+      spawnRampPerSec: 0.018,
+      doubleSpawnChance: 0.72,
+      laneChangeChance: 0.42,
       scoreMult: 2.5,
     },
   };
@@ -2585,9 +2585,9 @@
     }
 
     // Traffic update, overtaking gaps & 3D collision check
-    const minFollowGap = 11;
-    const minLaneChangeGap = 24;
-    const minOvertakeCorridor = 22;
+    const minFollowGap = 12;
+    const minLaneChangeGap = 25;
+    const minOvertakeCorridor = 24;
 
     for (let i = traffic.length - 1; i >= 0; i--) {
       const car = traffic[i];
@@ -2599,7 +2599,7 @@
         if (ahead === car || ahead.targetLane !== car.targetLane || ahead.z <= car.z) continue;
         const requiredDist = (car.len + ahead.len) * 0.5 + minFollowGap;
         if (ahead.z - car.z < requiredDist) {
-          const aheadRelSpeed3D = speed3D - speed3D * ahead.speedFactor * 0.55;
+          const aheadRelSpeed3D = speed3D * 0.74;
           relSpeed3D = Math.min(relSpeed3D, aheadRelSpeed3D);
         }
       }
