@@ -929,31 +929,81 @@
     deck.castShadow = true;
     br.add(deck);
 
-    // Steel side trusses
+    // Steel side trusses + OHE (Overhead Electric) Catenary Masts & Wire
     [-1.5, 1.5].forEach((rz) => {
       const truss = new THREE.Mesh(new THREE.BoxGeometry(46, 0.5, 0.18), steelMat);
       truss.position.set(0, 8.1, rz);
       br.add(truss);
     });
+    for (let mx = -18; mx <= 18; mx += 12) {
+      const mast = new THREE.Mesh(new THREE.BoxGeometry(0.16, 3.0, 0.16), steelMat);
+      mast.position.set(mx, 9.0, -1.55);
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 1.7), steelMat);
+      arm.position.set(mx, 10.2, -0.75);
+      br.add(mast, arm);
+    }
+    const oheWire = new THREE.Mesh(
+      new THREE.BoxGeometry(46, 0.04, 0.04),
+      new THREE.MeshBasicMaterial({ color: 0x94a3b8 })
+    );
+    oheWire.position.set(0, 10.05, 0);
+    br.add(oheWire);
 
-    // Animated 3D Express Train
+    // Animated 3D Indian Railways Express Train (WAP-7 Loco + Blue ICF Coaches)
     const train = new THREE.Group();
-    const locoMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.5, roughness: 0.25 });
-    const carMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.4, roughness: 0.3 });
+    const wapWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, metalness: 0.35, roughness: 0.3 });
+    const wapRedMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, metalness: 0.35, roughness: 0.35 });
+    const icfBlueMat = new THREE.MeshStandardMaterial({ color: 0x1e40af, metalness: 0.35, roughness: 0.35 });
+    const icfStripeMat = new THREE.MeshStandardMaterial({ color: 0x60a5fa, roughness: 0.4 });
+    const creamMat = new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.45 });
+    const roofMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.65 });
     const winMat = new THREE.MeshBasicMaterial({ color: nightMode ? 0xfef08a : 0x0f172a });
 
-    const loco = new THREE.Mesh(new THREE.BoxGeometry(4.4, 1.5, 1.55), locoMat);
-    loco.position.set(0, 0.8, 0);
-    const trainLight = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xfef08a }));
-    trainLight.position.set(2.25, 0.8, 0);
-    train.add(loco, trainLight);
+    // WAP-7 Electric Locomotive
+    const loco = new THREE.Mesh(new THREE.BoxGeometry(4.6, 1.55, 1.62), wapWhiteMat);
+    loco.position.set(0, 0.82, 0);
+    const locoStripe = new THREE.Mesh(new THREE.BoxGeometry(4.64, 0.36, 1.66), wapRedMat);
+    locoStripe.position.set(0, 0.72, 0);
+    const locoRoof = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.14, 1.5), roofMat);
+    locoRoof.position.set(0, 1.65, 0);
+    const locoCabWin = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.45, 1.25), winMat);
+    locoCabWin.position.set(2.28, 1.15, 0);
+    const locoHeadlight = new THREE.Mesh(
+      new THREE.SphereGeometry(0.18, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xfef08a })
+    );
+    locoHeadlight.position.set(2.34, 0.68, 0);
 
+    // Raised Pantograph on WAP-7 Roof
+    const pantoArm1 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.75, 0.08), steelMat);
+    pantoArm1.position.set(-0.6, 2.0, 0);
+    pantoArm1.rotation.z = -0.45;
+    const pantoArm2 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.75, 0.08), steelMat);
+    pantoArm2.position.set(-0.35, 2.0, 0);
+    pantoArm2.rotation.z = 0.45;
+    const pantoTop = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.06, 0.9), steelMat);
+    pantoTop.position.set(-0.48, 2.38, 0);
+    train.add(loco, locoStripe, locoRoof, locoCabWin, locoHeadlight, pantoArm1, pantoArm2, pantoTop);
+
+    // 4 Iconic Indian Railways Blue Express Coaches
     for (let c = 1; c <= 4; c++) {
-      const carriage = new THREE.Mesh(new THREE.BoxGeometry(4.2, 1.35, 1.48), carMat);
-      carriage.position.set(-c * 4.6, 0.75, 0);
-      const winStrip = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.4, 1.52), winMat);
-      winStrip.position.set(-c * 4.6, 0.9, 0);
-      train.add(carriage, winStrip);
+      const cx = -c * 4.9;
+      const carriage = new THREE.Mesh(new THREE.BoxGeometry(4.5, 1.45, 1.54), icfBlueMat);
+      carriage.position.set(cx, 0.78, 0);
+      const band = new THREE.Mesh(new THREE.BoxGeometry(4.52, 0.55, 1.56), icfStripeMat);
+      band.position.set(cx, 0.94, 0);
+      const creamLine = new THREE.Mesh(new THREE.BoxGeometry(4.54, 0.12, 1.57), creamMat);
+      creamLine.position.set(cx, 0.56, 0);
+      const cRoof = new THREE.Mesh(new THREE.BoxGeometry(4.45, 0.14, 1.44), roofMat);
+      cRoof.position.set(cx, 1.56, 0);
+      train.add(carriage, band, creamLine, cRoof);
+
+      // Individual Passenger Windows along the coach
+      for (let wx = -1.5; wx <= 1.5; wx += 0.6) {
+        const win = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.34, 1.6), winMat);
+        win.position.set(cx + wx, 0.96, 0);
+        train.add(win);
+      }
     }
     train.position.set(-24, 7.6, 0);
     br.add(train);
