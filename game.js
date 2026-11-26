@@ -134,6 +134,7 @@
   const hudScore = document.getElementById("hud-score");
   const hudSpeed = document.getElementById("hud-speed");
   const hudBest = document.getElementById("hud-best");
+  const hudCoins = document.getElementById("hud-coins");
   const hudFriendStat = document.getElementById("hud-friend-stat");
   const hudFriendScore = document.getElementById("hud-friend-score");
   const hudModeBadge = document.getElementById("hud-mode-badge");
@@ -1345,14 +1346,15 @@
   let coins = [];
   let particles = [];
   let coinTimer = 0;
+  let coinsCollected = 0;
   let coinCombo = 0;
   let comboTimer = 0;
   let level = 1;
   let nextLevelDist = 500;
   let lastFrameTime = 0;
 
-  const MP_FINISH_BY_MODE = { easy: 6000, hard: 8000, extreme: 10500 };
-  const MP_MAX_SECONDS = 210; // 3m 30s max multiplayer match length
+  const MP_FINISH_METERS = 10000;
+  const MP_MAX_SECONDS = 240; // 4:00 max multiplayer match length
 
   // Online Multiplayer (WSS Pub/Sub via MQTT over WebSockets — works across all mobile/WiFi networks)
   const mp = {
@@ -1370,6 +1372,7 @@
       targetX: 0,
       tilt: 0,
       score: 0,
+      coins: 0,
       alive: true,
     },
   };
@@ -1503,6 +1506,7 @@
       mp.resultReason = "";
       mp.friend.alive = true;
       mp.friend.score = 0;
+      mp.friend.coins = 0;
       mp.friend.x = getLaneCenterX(mp.isHost ? 2 : 0);
       mp.friend.targetX = mp.friend.x;
       mp.friend.tilt = 0;
@@ -1510,7 +1514,7 @@
       friendMesh.visible = true;
       friendMesh.position.set(mp.friend.x, 0, -1.6);
       hudFriendStat.classList.remove("hidden");
-      hudFriendScore.textContent = "0";
+      hudFriendScore.textContent = "🪙 0";
     } else {
       friendMesh.visible = false;
       hudFriendStat.classList.add("hidden");
@@ -1522,9 +1526,11 @@
     nearMisses = 0;
     elapsedTime = 0;
     spawnTimer = 0.45;
-    coinTimer = 1.1;
+    coinTimer = 0.7;
+    coinsCollected = 0;
     coinCombo = 0;
     comboTimer = 0;
+    hudCoins.textContent = "🪙 0";
     level = 1;
     nextLevelDist = 500;
     crashTimer = 0;
@@ -1587,8 +1593,7 @@
     sfx.stopMusic();
     sfx.playCrash();
     if (mp.active) {
-      mp.resultReason = "crashed";
-      sendMp({ type: "crash", score: Math.floor(score) });
+      sendMp({ type: "crash", score: Math.floor(score), coins: coinsCollected });
     }
 
     const cx = (player.x + hitCar.x) / 2;
@@ -1642,38 +1647,34 @@
     const overSub = screenGameover.querySelector(".subtitle");
 
     if (mp.active) {
-      const targetFinish = MP_FINISH_BY_MODE[selectedMode] || 6000;
       const fScore = Math.floor(mp.friend.score);
-      if (mp.resultReason === "finished_first") {
-        overTag.textContent = `🏁 ${targetFinish}m FINISH!`;
+      const myCoins = coinsCollected;
+      const fCoins = mp.friend.coins || 0;
+      if (mp.resultReason === "coins_win") {
+        overTag.textContent = `🪙 ${MP_FINISH_METERS}m FINISH!`;
         overTitle.textContent = "YOU WIN!";
-        overSub.textContent = "You reached the finish line first!";
-        overMpResult.textContent = `🏆 1ST PLACE! (Friend: ${fScore.toLocaleString()})`;
-      } else if (mp.resultReason === "time_win") {
-        overTag.textContent = "⏱️ TIME UP!";
-        overTitle.textContent = "YOU WIN!";
-        overSub.textContent = "You led on score at the 3:30 finish!";
-        overMpResult.textContent = `🏆 WINNER! (${finalScore.toLocaleString()} vs ${fScore.toLocaleString()})`;
-      } else if (mp.resultReason === "time_loss") {
-        overTag.textContent = "⏱️ TIME UP!";
+        overSub.textContent = `You collected more coins under ${MP_FINISH_METERS}m!`;
+        overMpResult.textContent = `🏆 YOU WIN! (🪙 ${myCoins} vs 🪙 ${fCoins})`;
+      } else if (mp.resultReason === "coins_loss") {
+        overTag.textContent = `🪙 ${MP_FINISH_METERS}m FINISH!`;
         overTitle.textContent = "2ND PLACE";
-        overSub.textContent = "Your friend led at the 3:30 finish!";
-        overMpResult.textContent = `🥈 FRIEND WINS! (${finalScore.toLocaleString()} vs ${fScore.toLocaleString()})`;
+        overSub.textContent = `Your friend collected more coins under ${MP_FINISH_METERS}m!`;
+        overMpResult.textContent = `🥈 FRIEND WINS! (🪙 ${myCoins} vs 🪙 ${fCoins})`;
+      } else if (mp.resultReason === "coins_draw") {
+        overTag.textContent = `🪙 ${MP_FINISH_METERS}m FINISH!`;
+        overTitle.textContent = "TIE GAME!";
+        overSub.textContent = `Both collected ${myCoins} coins!`;
+        overMpResult.textContent = `🤝 DRAW! (🪙 ${myCoins} vs 🪙 ${fCoins} • Score ${finalScore} vs ${fScore})`;
       } else if (mp.resultReason === "friend_crashed") {
         overTag.textContent = "🏆 VICTORY!";
         overTitle.textContent = "YOU WIN!";
         overSub.textContent = "Your friend crashed first!";
-        overMpResult.textContent = `🏆 YOU SURVIVED! (Friend: ${fScore.toLocaleString()})`;
-      } else if (mp.resultReason === "friend_finished") {
-        overTag.textContent = "🏁 RACE OVER";
-        overTitle.textContent = "2ND PLACE";
-        overSub.textContent = `Your friend reached ${targetFinish}m first!`;
-        overMpResult.textContent = `🥈 FRIEND WINS! (Friend: ${fScore.toLocaleString()})`;
+        overMpResult.textContent = `🏆 YOU SURVIVED! (Coins: 🪙 ${myCoins} vs 🪙 ${fCoins})`;
       } else {
         overTag.textContent = "CRASHED!";
         overTitle.textContent = "RACE FAILED";
         overSub.textContent = "You hit another vehicle.";
-        overMpResult.textContent = `🥈 FRIEND WINS! (Friend: ${fScore.toLocaleString()})`;
+        overMpResult.textContent = `🥈 FRIEND WINS! (Coins: 🪙 ${myCoins} vs 🪙 ${fCoins})`;
       }
       overMpResult.classList.remove("hidden");
     } else {
@@ -1980,13 +1981,15 @@
       mp.friend.targetX = data.x;
       mp.friend.tilt = data.tilt || 0;
       mp.friend.score = data.score || 0;
+      if (typeof data.coins === "number") mp.friend.coins = data.coins;
       mp.friend.alive = data.alive !== false;
-      hudFriendScore.textContent = Math.floor(mp.friend.score).toLocaleString();
+      hudFriendScore.textContent = `🪙 ${mp.friend.coins}`;
     } else if (data.type === "crash") {
       mp.friend.alive = false;
       mp.friend.score = data.score || mp.friend.score;
+      if (typeof data.coins === "number") mp.friend.coins = data.coins;
       friendMesh.visible = false;
-      hudFriendScore.textContent = `${Math.floor(mp.friend.score).toLocaleString()} 💥`;
+      hudFriendScore.textContent = `🪙 ${mp.friend.coins} 💥`;
       if (state === "playing") {
         mp.resultReason = "friend_crashed";
         sfx.stopMusic();
@@ -1995,10 +1998,16 @@
       }
     } else if (data.type === "finish") {
       mp.friend.score = data.score || mp.friend.score;
-      hudFriendScore.textContent = `${Math.floor(mp.friend.score).toLocaleString()} 🏁`;
+      if (typeof data.coins === "number") mp.friend.coins = data.coins;
+      hudFriendScore.textContent = `🪙 ${mp.friend.coins} 🏁`;
       if (state === "playing") {
-        mp.resultReason = "friend_finished";
+        if (coinsCollected > mp.friend.coins) mp.resultReason = "coins_win";
+        else if (coinsCollected < mp.friend.coins) mp.resultReason = "coins_loss";
+        else if (Math.floor(score) > Math.floor(mp.friend.score)) mp.resultReason = "coins_win";
+        else if (Math.floor(score) < Math.floor(mp.friend.score)) mp.resultReason = "coins_loss";
+        else mp.resultReason = "coins_draw";
         sfx.stopMusic();
+        if (mp.resultReason === "coins_win") sfx.playLevelUp();
         finishGameOver();
       }
     } else if (data.type === "rematch_request" && mp.isHost) {
@@ -2557,15 +2566,14 @@
     distanceMeters += (speed * dt) / 16;
 
     if (mp.active) {
-      const targetFinish = MP_FINISH_BY_MODE[selectedMode] || 6000;
       const timeLeft = Math.max(0, Math.ceil(MP_MAX_SECONDS - elapsedTime));
       const mins = Math.floor(timeLeft / 60);
       const secs = String(timeLeft % 60).padStart(2, "0");
-      hudModeBadge.textContent = `${mode.label.toUpperCase()} • ${mins}:${secs}`;
+      hudModeBadge.textContent = `${Math.floor(distanceMeters)}/${MP_FINISH_METERS}m • ${mins}:${secs}`;
 
-      const pct = Math.min(100, Math.max((distanceMeters / targetFinish) * 100, (elapsedTime / MP_MAX_SECONDS) * 100));
+      const pct = Math.min(100, (distanceMeters / MP_FINISH_METERS) * 100);
       hudProgressFill.style.width = `${pct}%`;
-      const metersLeft = targetFinish - distanceMeters;
+      const metersLeft = MP_FINISH_METERS - distanceMeters;
       if (metersLeft <= 130 && metersLeft > -15) {
         finishArch.visible = true;
         finishArch.position.z = -metersLeft * 1.1;
@@ -2573,20 +2581,15 @@
         finishArch.visible = false;
       }
 
-      if (distanceMeters >= targetFinish) {
-        mp.resultReason = "finished_first";
-        sendMp({ type: "finish", score: Math.floor(score) });
+      if (distanceMeters >= MP_FINISH_METERS || elapsedTime >= MP_MAX_SECONDS) {
+        if (coinsCollected > mp.friend.coins) mp.resultReason = "coins_win";
+        else if (coinsCollected < mp.friend.coins) mp.resultReason = "coins_loss";
+        else if (Math.floor(score) > Math.floor(mp.friend.score)) mp.resultReason = "coins_win";
+        else if (Math.floor(score) < Math.floor(mp.friend.score)) mp.resultReason = "coins_loss";
+        else mp.resultReason = "coins_draw";
+        sendMp({ type: "finish", score: Math.floor(score), coins: coinsCollected });
         sfx.stopMusic();
-        sfx.playLevelUp();
-        finishGameOver();
-        return;
-      }
-      if (elapsedTime >= MP_MAX_SECONDS) {
-        const myScore = Math.floor(score);
-        const fScore = Math.floor(mp.friend.score);
-        mp.resultReason = myScore >= fScore ? "time_win" : "time_loss";
-        sfx.stopMusic();
-        if (myScore >= fScore) sfx.playLevelUp();
+        if (mp.resultReason === "coins_win") sfx.playLevelUp();
         finishGameOver();
         return;
       }
@@ -2609,7 +2612,7 @@
     if (!mp.active || mp.isHost) {
       coinTimer -= dt;
       if (coinTimer <= 0) {
-        coinTimer = 1.25 + Math.random() * 0.9;
+        coinTimer = mp.active ? 0.72 + Math.random() * 0.45 : 1.1 + Math.random() * 0.75;
         const openCoinLanes = [0, 1, 2].filter(
           (l) => !traffic.some((c) => (c.lane === l || c.targetLane === l) && c.z < SPAWN_Z + 18)
         );
@@ -2630,6 +2633,8 @@
       coin.mesh.rotation.y += 4.5 * dt;
 
       if (Math.abs(player.x - coin.x) < 1.45 && Math.abs(coin.z) < 2.6) {
+        coinsCollected += 1;
+        hudCoins.textContent = `🪙 ${coinsCollected}`;
         coinCombo = Math.min(5, coinCombo + 1);
         comboTimer = 3.5;
         const pts = Math.round(75 * coinCombo * mode.scoreMult);
@@ -2687,6 +2692,7 @@
           x: player.x,
           tilt: player.tilt,
           score: Math.floor(score),
+          coins: coinsCollected,
           alive: true,
         });
       }
