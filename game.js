@@ -1206,8 +1206,8 @@
   function spawnTraffic() {
     const mode = MODES[selectedMode];
     const lanes = [0, 1, 2];
-    const minSameLaneGap = 24;
-    const minOvertakeGap = 18;
+    const minSameLaneGap = 28;
+    const minOvertakeGap = 26;
 
     const clearLanes = lanes.filter((laneIdx) => {
       return !traffic.some((c) => (c.lane === laneIdx || c.targetLane === laneIdx) && c.z < SPAWN_Z + minSameLaneGap);
@@ -1219,11 +1219,19 @@
     );
     if (occupiedInWindow.length >= 2) return;
 
-    const firstLane = clearLanes[Math.floor(Math.random() * clearLanes.length)];
+    // Never pick a lane that would close the last open lane in the overtake window
+    const safeLanes = clearLanes.filter((candidateLane) => {
+      const wouldBeOccupied = new Set(occupiedInWindow);
+      wouldBeOccupied.add(candidateLane);
+      return wouldBeOccupied.size <= 2;
+    });
+    if (safeLanes.length === 0) return;
+
+    const firstLane = safeLanes[Math.floor(Math.random() * safeLanes.length)];
     const chosen = [firstLane];
 
-    if (clearLanes.length >= 2 && occupiedInWindow.length === 0 && Math.random() < mode.doubleSpawnChance) {
-      const remaining = clearLanes.filter((l) => l !== firstLane);
+    if (safeLanes.length >= 2 && occupiedInWindow.length === 0 && Math.random() < mode.doubleSpawnChance) {
+      const remaining = safeLanes.filter((l) => l !== firstLane);
       chosen.push(remaining[Math.floor(Math.random() * remaining.length)]);
     }
 
@@ -1382,13 +1390,14 @@
     }
 
     // Traffic update, overtaking gaps & 3D collision check
-    const minFollowGap = 9.5;
-    const minLaneChangeGap = 21;
-    const minOvertakeCorridor = 16;
+    const minFollowGap = 11;
+    const minLaneChangeGap = 24;
+    const minOvertakeCorridor = 22;
 
     for (let i = traffic.length - 1; i >= 0; i--) {
       const car = traffic[i];
-      let relSpeed3D = speed3D - speed3D * car.speedFactor * 0.55;
+      // Uniform cruising pace keeps waves from catching up and forming a 3-lane wall
+      let relSpeed3D = speed3D * 0.74;
 
       // Maintain following distance behind slower cars ahead in the same lane
       for (const ahead of traffic) {
