@@ -2017,20 +2017,13 @@
     const url = WSS_BROKERS[brokerIdx] || WSS_BROKERS[0];
     const client = mqtt.connect(url, {
       clientId: `tl3_${mp.isHost ? "h" : "g"}_${Math.random().toString(36).slice(2, 8)}`,
-      connectTimeout: 5000,
-      reconnectPeriod: 0,
+      connectTimeout: 9000,
+      reconnectPeriod: 2000,
       clean: true,
     });
     mp.client = client;
 
-    const fallbackTimer = setTimeout(() => {
-      if (!client.connected && brokerIdx + 1 < WSS_BROKERS.length) {
-        connectWssRoom(brokerIdx + 1);
-      }
-    }, 4500);
-
     client.on("connect", () => {
-      clearTimeout(fallbackTimer);
       const listenChannel = mp.isHost ? "guest" : "host";
       client.subscribe(`turbolane3/room/${mp.roomCode}/${listenChannel}`, (err) => {
         if (err) {
@@ -2040,17 +2033,21 @@
         if (mp.isHost) {
           setMpStatus(`⏳ Waiting for friend to join room ${mp.roomCode}...`);
         } else {
-          setMpStatus(`⏳ Connecting to room ${mp.roomCode}...`);
+          setMpStatus(`⏳ Connecting to room ${mp.roomCode}... (make sure Host keeps tab open)`);
           sendMp({ type: "hello" });
-          mp.joinRetryTimer = setInterval(() => {
-            if (!mp.connected) sendMp({ type: "hello" });
-          }, 1200);
-          mp.joinTimeoutTimer = setTimeout(() => {
-            if (!mp.connected) {
-              clearMpTimers();
-              setMpStatus(`⚠️ Room ${mp.roomCode} not found or Host is not waiting. Ask Host to recreate room.`);
-            }
-          }, 12000);
+          if (!mp.joinRetryTimer) {
+            mp.joinRetryTimer = setInterval(() => {
+              if (!mp.connected) sendMp({ type: "hello" });
+            }, 1200);
+          }
+          if (!mp.joinTimeoutTimer) {
+            mp.joinTimeoutTimer = setTimeout(() => {
+              if (!mp.connected) {
+                clearMpTimers();
+                setMpStatus(`⚠️ Host did not reply for room ${mp.roomCode}. Make sure Host stays on the game tab!`);
+              }
+            }, 35000);
+          }
         }
       });
     });
@@ -2064,7 +2061,6 @@
     });
 
     client.on("error", () => {
-      clearTimeout(fallbackTimer);
       if (!mp.connected && brokerIdx + 1 < WSS_BROKERS.length) {
         connectWssRoom(brokerIdx + 1);
       } else if (!mp.connected) {
@@ -2085,9 +2081,21 @@
     connectWssRoom(0);
   }
 
+  function extractRoomCode(raw) {
+    const val = String(raw || "").trim();
+    if (!val) return "";
+    const match = val.match(/[?&]room=([A-Za-z0-9_-]+)/i);
+    if (match) return match[1].toUpperCase();
+    return val.replace(/\s+/g, "").toUpperCase();
+  }
+
   function joinRoom(rawCode) {
-    const code = (rawCode || mpJoinInput.value).trim().toUpperCase();
-    if (!code) return;
+    const code = extractRoomCode(rawCode || mpJoinInput.value);
+    if (!code) {
+      setMpStatus("⚠️ Please enter the Room Code.");
+      return;
+    }
+    mpJoinInput.value = code;
     mp.roomCode = code;
     mp.isHost = false;
     setMpStatus(`⏳ Joining room ${code}...`);
@@ -2098,6 +2106,12 @@
   document.getElementById("btn-mp-close").addEventListener("click", closeMultiLobby);
   btnMpCreate.addEventListener("click", createRoom);
   btnMpJoin.addEventListener("click", () => joinRoom());
+  mpJoinInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      joinRoom();
+    }
+  });
   btnMpStart.addEventListener("click", () => {
     if (!mp.isHost || !mp.connected) return;
     sendMp({ type: "start", mode: selectedMode, road: selectedRoad });
