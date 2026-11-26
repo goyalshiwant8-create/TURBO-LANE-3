@@ -1282,6 +1282,16 @@
     });
   }
 
+  const PEER_CONFIG = {
+    config: {
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:stun2.l.google.com:19302" },
+      ],
+    },
+  };
+
   function createRoom() {
     if (typeof Peer === "undefined") {
       setMpStatus("⚠️ Multiplayer library still loading, try again in a second.");
@@ -1296,7 +1306,7 @@
     mpRoomCodeEl.textContent = code;
     setMpStatus("⏳ Creating room...");
 
-    mp.peer = new Peer(`tl3-${code}`);
+    mp.peer = new Peer(`tl3-${code}`, PEER_CONFIG);
     mp.peer.on("open", () => {
       setMpStatus(`⏳ Waiting for friend to join room ${code}...`);
     });
@@ -1312,7 +1322,8 @@
     const code = (rawCode || mpJoinInput.value).trim().toUpperCase();
     if (!code) return;
     if (typeof Peer === "undefined") {
-      setMpStatus("⚠️ Multiplayer library still loading, try again in a second.");
+      setMpStatus("⏳ Loading multiplayer, retrying...");
+      setTimeout(() => joinRoom(code), 800);
       return;
     }
     if (mp.peer) mp.peer.destroy();
@@ -1320,7 +1331,7 @@
     mp.isHost = false;
     setMpStatus(`⏳ Joining room ${code}...`);
 
-    mp.peer = new Peer();
+    mp.peer = new Peer(PEER_CONFIG);
     mp.peer.on("open", () => {
       const conn = mp.peer.connect(`tl3-${code}`, { reliable: true });
       bindPeerConnection(conn);
