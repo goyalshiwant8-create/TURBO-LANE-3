@@ -104,11 +104,11 @@
   };
 
   const VEHICLE_TYPES = [
-    { kind: "sedan", w: 1.9, len: 4.1, h: 1.25, speedFactor: 0.42, colors: [0x38bdf8, 0xf43f5e, 0xa855f7, 0x22c55e, 0xe2e8f0] },
-    { kind: "sports", w: 1.95, len: 4.0, h: 1.1, speedFactor: 0.56, colors: [0xf97316, 0xec4899, 0xeab308, 0x06b6d4] },
-    { kind: "taxi", w: 1.9, len: 4.1, h: 1.25, speedFactor: 0.45, colors: [0xfacc15] },
-    { kind: "suv", w: 2.05, len: 4.5, h: 1.55, speedFactor: 0.36, colors: [0x64748b, 0x0f766e, 0xdc2626, 0x1d4ed8] },
-    { kind: "truck", w: 2.2, len: 5.9, h: 2.3, speedFactor: 0.26, colors: [0xcbd5e1, 0xfb923c, 0x60a5fa, 0x4ade80] },
+    { kind: "hypercar", w: 2.02, len: 4.3, h: 1.02, speedFactor: 0.45, colors: [0xf43f5e, 0x00e5ff, 0xfbbf24, 0x22c55e, 0xa855f7] },
+    { kind: "gt", w: 1.98, len: 4.2, h: 1.05, speedFactor: 0.45, colors: [0xf97316, 0x3b82f6, 0xec4899, 0xe2e8f0] },
+    { kind: "spider", w: 1.96, len: 4.1, h: 0.98, speedFactor: 0.45, colors: [0xfacc15, 0x10b981, 0xef4444, 0x06b6d4] },
+    { kind: "prototype", w: 2.06, len: 4.4, h: 0.96, speedFactor: 0.45, colors: [0x6366f1, 0xf43f5e, 0x14b8a6, 0xf8fafc] },
+    { kind: "apex", w: 2.0, len: 4.25, h: 1.0, speedFactor: 0.45, colors: [0x84cc16, 0xeab308, 0x0ea5e9, 0xd946ef] },
   ];
 
   // 3D Road Dimensions
@@ -518,77 +518,92 @@
   const glassMat = new THREE.MeshStandardMaterial({ color: 0x0b1220, metalness: 0.75, roughness: 0.12 });
   const headlightMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
 
+  const carbonMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.4, roughness: 0.45 });
+
   function createVehicleMesh(kind, color, isPlayer) {
     const group = new THREE.Group();
     const spec = isPlayer
-      ? { w: 1.95, len: 4.2, h: 1.15 }
+      ? { w: 2.04, len: 4.35, h: 1.0 }
       : VEHICLE_TYPES.find((v) => v.kind === kind) || VEHICLE_TYPES[0];
 
     const bodyMat = new THREE.MeshStandardMaterial({
       color,
-      metalness: 0.48,
-      roughness: 0.24,
+      metalness: 0.58,
+      roughness: 0.18,
     });
 
-    // Main Chassis
-    const chassisH = kind === "truck" ? 0.65 : spec.h * 0.55;
-    const chassis = new THREE.Mesh(new THREE.BoxGeometry(spec.w, chassisH, spec.len), bodyMat);
-    chassis.position.y = 0.36 + chassisH / 2;
+    // Low-slung Supercar Main Body
+    const chassisH = spec.h * 0.48;
+    const chassis = new THREE.Mesh(new THREE.BoxGeometry(spec.w, chassisH, spec.len * 0.88), bodyMat);
+    chassis.position.set(0, 0.32 + chassisH / 2, 0.08);
     chassis.castShadow = true;
     chassis.receiveShadow = true;
     group.add(chassis);
 
-    if (kind === "truck") {
-      // Truck cab + cargo container
-      const cab = new THREE.Mesh(new THREE.BoxGeometry(spec.w * 0.9, 1.0, 1.5), bodyMat);
-      cab.position.set(0, 0.36 + chassisH + 0.5, -spec.len * 0.32);
-      cab.castShadow = true;
-      group.add(cab);
+    // Wedge Front Nose & Carbon-Fiber Splitter
+    const nose = new THREE.Mesh(new THREE.BoxGeometry(spec.w * 0.92, chassisH * 0.68, spec.len * 0.24), bodyMat);
+    nose.position.set(0, 0.32 + chassisH * 0.34, -spec.len * 0.42);
+    nose.rotation.x = 0.12;
+    nose.castShadow = true;
+    group.add(nose);
 
-      const cargoMat = new THREE.MeshLambertMaterial({ color: 0xe2e8f0 });
-      const cargo = new THREE.Mesh(new THREE.BoxGeometry(spec.w * 0.96, 1.45, spec.len * 0.68), cargoMat);
-      cargo.position.set(0, 0.36 + chassisH + 0.72, spec.len * 0.14);
-      cargo.castShadow = true;
-      group.add(cargo);
-    } else {
-      // Cabin / windshield
-      const cabinH = spec.h * 0.45;
-      const cabin = new THREE.Mesh(new THREE.BoxGeometry(spec.w * 0.78, cabinH, spec.len * 0.48), glassMat);
-      cabin.position.set(0, 0.36 + chassisH + cabinH / 2 - 0.02, 0.1);
-      cabin.castShadow = true;
-      group.add(cabin);
+    const splitter = new THREE.Mesh(new THREE.BoxGeometry(spec.w * 1.02, 0.07, 0.38), carbonMat);
+    splitter.position.set(0, 0.26, -spec.len * 0.51);
+    group.add(splitter);
 
-      const roof = new THREE.Mesh(new THREE.BoxGeometry(spec.w * 0.72, 0.08, spec.len * 0.38), bodyMat);
-      roof.position.set(0, 0.36 + chassisH + cabinH, 0.15);
-      group.add(roof);
-    }
+    // Carbon Side Skirts & Side Air Intakes
+    [-1, 1].forEach((side) => {
+      const skirt = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.12, spec.len * 0.62), carbonMat);
+      skirt.position.set(side * (spec.w * 0.5 + 0.02), 0.29, 0.05);
+      group.add(skirt);
 
-    if (kind === "taxi") {
-      const sign = new THREE.Mesh(
-        new THREE.BoxGeometry(0.65, 0.2, 0.32),
-        new THREE.MeshBasicMaterial({ color: 0xfef08a })
-      );
-      sign.position.set(0, 0.36 + spec.h + 0.1, 0.1);
-      group.add(sign);
-    }
+      const intake = new THREE.Mesh(new THREE.BoxGeometry(0.08, chassisH * 0.55, 0.55), carbonMat);
+      intake.position.set(side * (spec.w * 0.49), 0.34 + chassisH * 0.5, 0.45);
+      group.add(intake);
+    });
 
-    if (isPlayer || kind === "sports") {
-      const spoiler = new THREE.Mesh(
-        new THREE.BoxGeometry(spec.w * 0.88, 0.1, 0.35),
-        new THREE.MeshLambertMaterial({ color: 0x0f172a })
-      );
-      spoiler.position.set(0, 0.36 + chassisH + 0.22, spec.len / 2 - 0.25);
-      group.add(spoiler);
-    }
+    // Sleek Teardrop Supercar Cockpit Canopy
+    const cabinH = spec.h * 0.42;
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(spec.w * 0.68, cabinH, spec.len * 0.44), glassMat);
+    cabin.position.set(0, 0.32 + chassisH + cabinH / 2 - 0.03, 0.12);
+    cabin.castShadow = true;
+    group.add(cabin);
+
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(spec.w * 0.6, 0.07, spec.len * 0.32), bodyMat);
+    roof.position.set(0, 0.32 + chassisH + cabinH - 0.02, 0.2);
+    group.add(roof);
+
+    // Aggressive GT Carbon-Fiber Rear Wing + Twin Struts
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(spec.w * 0.96, 0.08, 0.36), carbonMat);
+    wing.position.set(0, 0.32 + chassisH + 0.34, spec.len / 2 - 0.18);
+    wing.castShadow = true;
+    group.add(wing);
+
+    [-0.42, 0.42].forEach((sx) => {
+      const strut = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.34, 0.16), carbonMat);
+      strut.position.set(sx, 0.32 + chassisH + 0.17, spec.len / 2 - 0.2);
+      group.add(strut);
+    });
+
+    // Twin Rear Exhausts
+    const exhaustMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.9, roughness: 0.2 });
+    [-0.36, 0.36].forEach((ex) => {
+      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.22, 10), exhaustMat);
+      pipe.rotation.x = Math.PI / 2;
+      pipe.position.set(ex, 0.34, spec.len / 2 + 0.04);
+      group.add(pipe);
+    });
 
     if (isPlayer) {
-      // Racing stripe
-      const stripe = new THREE.Mesh(
-        new THREE.BoxGeometry(0.28, 0.03, spec.len * 0.94),
-        new THREE.MeshBasicMaterial({ color: 0xffffff })
-      );
-      stripe.position.set(0, 0.36 + chassisH + 0.02, 0);
-      group.add(stripe);
+      // Twin Racing Stripes
+      [-0.18, 0.18].forEach((sx) => {
+        const stripe = new THREE.Mesh(
+          new THREE.BoxGeometry(0.12, 0.03, spec.len * 0.9),
+          new THREE.MeshBasicMaterial({ color: 0xffffff })
+        );
+        stripe.position.set(sx, 0.32 + chassisH + 0.02, 0.02);
+        group.add(stripe);
+      });
     }
 
     // 4 Wheels
