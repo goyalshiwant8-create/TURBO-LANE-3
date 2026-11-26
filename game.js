@@ -776,6 +776,326 @@
   const skylineGroup = new THREE.Group();
   scene.add(skylineGroup);
 
+  // Real-Life World Landmarks: Buildings, Train Bridges + Moving Train, Airport + Jet, Nature & Clouds
+  const worldGroup = new THREE.Group();
+  scene.add(worldGroup);
+  let worldLoopers = [];
+  let skyClouds = [];
+  let movingTrain = null;
+  let airportRadar = null;
+  let skyPlane = null;
+
+  function createBuildingMesh(nightMode, desertMode, idx) {
+    const bGroup = new THREE.Group();
+    const w = 4.5 + (idx % 3) * 1.4;
+    const d = 4.5 + ((idx + 1) % 3) * 1.4;
+    const h = 7 + ((idx * 5) % 14);
+    const palette = nightMode
+      ? [0x1e293b, 0x172554, 0x312e81]
+      : desertMode
+      ? [0xd6b892, 0xc29b6c, 0xa87c4f]
+      : [0xcbd5e1, 0x94a3b8, 0xe2e8f0, 0x64748b];
+    const wallMat = new THREE.MeshStandardMaterial({
+      color: palette[idx % palette.length],
+      roughness: 0.7,
+      metalness: 0.2,
+    });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMat);
+    body.position.y = h / 2;
+    body.castShadow = true;
+    body.receiveShadow = true;
+    bGroup.add(body);
+
+    // Lit / reflective window bands
+    const winColor = nightMode ? (idx % 2 === 0 ? 0xfef08a : 0x38bdf8) : 0x0f172a;
+    const winMat = nightMode
+      ? new THREE.MeshBasicMaterial({ color: winColor })
+      : new THREE.MeshStandardMaterial({ color: winColor, metalness: 0.8, roughness: 0.15 });
+    const floors = Math.max(2, Math.floor(h / 2.6));
+    for (let f = 1; f < floors; f++) {
+      const band = new THREE.Mesh(new THREE.BoxGeometry(w + 0.08, 0.55, d + 0.08), winMat);
+      band.position.y = f * 2.4;
+      bGroup.add(band);
+    }
+
+    // Rooftop detail
+    const roofBox = new THREE.Mesh(
+      new THREE.BoxGeometry(w * 0.4, 0.9, d * 0.4),
+      new THREE.MeshLambertMaterial({ color: 0x334155 })
+    );
+    roofBox.position.y = h + 0.45;
+    bGroup.add(roofBox);
+    return bGroup;
+  }
+
+  function createNatureCluster(roadId, idx) {
+    const nGroup = new THREE.Group();
+    if (roadId === "desert") {
+      // Desert boulders & scrub
+      const rockMat = new THREE.MeshStandardMaterial({ color: 0x9a3412, roughness: 0.9 });
+      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(1.4 + (idx % 2) * 0.6, 0), rockMat);
+      rock.position.y = 0.8;
+      rock.scale.y = 0.7;
+      nGroup.add(rock);
+    } else {
+      // Lush oak tree + bush
+      const trunk = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.2, 0.28, 1.8, 7),
+        new THREE.MeshLambertMaterial({ color: 0x78350f })
+      );
+      trunk.position.y = 0.9;
+      const canopyColor = roadId === "neon" ? 0x065f46 : idx % 2 === 0 ? 0x16a34a : 0x15803d;
+      const canopy = new THREE.Mesh(
+        new THREE.DodecahedronGeometry(1.5, 1),
+        new THREE.MeshLambertMaterial({ color: canopyColor })
+      );
+      canopy.position.y = 2.6;
+      canopy.castShadow = true;
+      const bush = new THREE.Mesh(
+        new THREE.SphereGeometry(0.8, 8, 8),
+        new THREE.MeshLambertMaterial({ color: 0x22c55e })
+      );
+      bush.position.set(1.2, 0.5, 0.6);
+      nGroup.add(trunk, canopy, bush);
+    }
+    return nGroup;
+  }
+
+  function createTrainBridge(nightMode) {
+    const br = new THREE.Group();
+    const concreteMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.85 });
+    const steelMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.7, roughness: 0.35 });
+
+    // Support pillars outside road
+    [-7.6, 7.6].forEach((px) => {
+      const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.1, 7.2, 1.8), concreteMat);
+      pillar.position.set(px, 3.6, 0);
+      pillar.castShadow = true;
+      br.add(pillar);
+    });
+
+    // Overhead bridge deck (high above highway so cars pass cleanly underneath)
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(46, 0.75, 3.4), concreteMat);
+    deck.position.set(0, 7.2, 0);
+    deck.castShadow = true;
+    br.add(deck);
+
+    // Steel side trusses
+    [-1.5, 1.5].forEach((rz) => {
+      const truss = new THREE.Mesh(new THREE.BoxGeometry(46, 0.5, 0.18), steelMat);
+      truss.position.set(0, 8.1, rz);
+      br.add(truss);
+    });
+
+    // Animated 3D Express Train
+    const train = new THREE.Group();
+    const locoMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.5, roughness: 0.25 });
+    const carMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.4, roughness: 0.3 });
+    const winMat = new THREE.MeshBasicMaterial({ color: nightMode ? 0xfef08a : 0x0f172a });
+
+    const loco = new THREE.Mesh(new THREE.BoxGeometry(4.4, 1.5, 1.55), locoMat);
+    loco.position.set(0, 0.8, 0);
+    const trainLight = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xfef08a }));
+    trainLight.position.set(2.25, 0.8, 0);
+    train.add(loco, trainLight);
+
+    for (let c = 1; c <= 4; c++) {
+      const carriage = new THREE.Mesh(new THREE.BoxGeometry(4.2, 1.35, 1.48), carMat);
+      carriage.position.set(-c * 4.6, 0.75, 0);
+      const winStrip = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.4, 1.52), winMat);
+      winStrip.position.set(-c * 4.6, 0.9, 0);
+      train.add(carriage, winStrip);
+    }
+    train.position.set(-24, 7.6, 0);
+    br.add(train);
+    movingTrain = train;
+
+    return br;
+  }
+
+  function createAirportLandmark(nightMode) {
+    const ap = new THREE.Group();
+    // Runway strip parallel to the highway
+    const runway = new THREE.Mesh(
+      new THREE.PlaneGeometry(7.5, 42),
+      new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.9 })
+    );
+    runway.rotation.x = -Math.PI / 2;
+    runway.position.set(0, 0.02, 0);
+    ap.add(runway);
+
+    // Runway center markings & edge lights
+    for (let i = -16; i <= 16; i += 4) {
+      const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 2.0), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+      dash.rotation.x = -Math.PI / 2;
+      dash.position.set(0, 0.03, i);
+      ap.add(dash);
+
+      [-3.5, 3.5].forEach((lx) => {
+        const bulb = new THREE.Mesh(
+          new THREE.SphereGeometry(0.14, 6, 6),
+          new THREE.MeshBasicMaterial({ color: nightMode ? 0x38bdf8 : 0xfbbf24 })
+        );
+        bulb.position.set(lx, 0.12, i);
+        ap.add(bulb);
+      });
+    }
+
+    // Airport Terminal Building
+    const terminal = new THREE.Mesh(
+      new THREE.BoxGeometry(5.5, 3.4, 14),
+      new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.35, metalness: 0.3 })
+    );
+    terminal.position.set(-7.5, 1.7, 0);
+    terminal.castShadow = true;
+    const termGlass = new THREE.Mesh(
+      new THREE.BoxGeometry(5.6, 1.6, 13.4),
+      new THREE.MeshStandardMaterial({ color: 0x0ea5e9, metalness: 0.8, roughness: 0.1 })
+    );
+    termGlass.position.set(-7.5, 1.8, 0);
+    ap.add(terminal, termGlass);
+
+    // Air Traffic Control Tower + Rotating Radar
+    const towerShaft = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.9, 1.2, 10, 10),
+      new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 })
+    );
+    towerShaft.position.set(-7.5, 5, -10);
+    const towerCab = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.1, 1.5, 2.0, 10),
+      new THREE.MeshStandardMaterial({ color: 0x38bdf8, metalness: 0.7, roughness: 0.15 })
+    );
+    towerCab.position.set(-7.5, 10.6, -10);
+    const radar = new THREE.Mesh(
+      new THREE.BoxGeometry(1.8, 0.4, 0.3),
+      new THREE.MeshBasicMaterial({ color: 0x00e5ff })
+    );
+    radar.position.set(-7.5, 12.1, -10);
+    ap.add(towerShaft, towerCab, radar);
+    airportRadar = radar;
+
+    return ap;
+  }
+
+  function createAirplane() {
+    const plane = new THREE.Group();
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, metalness: 0.4, roughness: 0.25 });
+    const accentMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.5, roughness: 0.3 });
+
+    const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.35, 5.2, 10), bodyMat);
+    fuselage.rotation.x = Math.PI / 2;
+    const wings = new THREE.Mesh(new THREE.BoxGeometry(6.4, 0.1, 1.3), bodyMat);
+    wings.position.set(0, 0, -0.2);
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.2, 0.9), accentMat);
+    tail.position.set(0, 0.6, 2.1);
+    const hStab = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.08, 0.65), accentMat);
+    hStab.position.set(0, 0.1, 2.2);
+
+    const navL = new THREE.Mesh(new THREE.SphereGeometry(0.14, 6, 6), new THREE.MeshBasicMaterial({ color: 0xff2a55 }));
+    navL.position.set(-3.2, 0, -0.2);
+    const navR = new THREE.Mesh(new THREE.SphereGeometry(0.14, 6, 6), new THREE.MeshBasicMaterial({ color: 0x22c55e }));
+    navR.position.set(3.2, 0, -0.2);
+
+    plane.add(fuselage, wings, tail, hStab, navL, navR);
+    plane.scale.set(1.3, 1.3, 1.3);
+    return plane;
+  }
+
+  function buildRealWorldScenery(roadId) {
+    while (worldGroup.children.length > 0) {
+      worldGroup.remove(worldGroup.children[0]);
+    }
+    worldLoopers = [];
+    skyClouds = [];
+    movingTrain = null;
+    airportRadar = null;
+    skyPlane = null;
+
+    const nightMode = roadId === "neon";
+    const desertMode = roadId === "desert";
+
+    // Roadside Buildings + Nature Clusters along both sides
+    for (let i = 0; i < 12; i++) {
+      const z = 12 - i * 16;
+      [-1, 1].forEach((side, sIdx) => {
+        const bldg = createBuildingMesh(nightMode, desertMode, i + sIdx);
+        bldg.position.set(side * (13.5 + (i % 2) * 3.5), 0, z);
+        worldGroup.add(bldg);
+        worldLoopers.push({ obj: bldg, span: 12 * 16 });
+
+        const nat = createNatureCluster(roadId, i + sIdx);
+        nat.position.set(side * (9.5 + (i % 3) * 1.4), 0, z - 8);
+        worldGroup.add(nat);
+        worldLoopers.push({ obj: nat, span: 12 * 16 });
+      });
+    }
+
+    // Overhead Train Bridge + Moving Express Train
+    const bridge = createTrainBridge(nightMode);
+    bridge.position.set(0, 0, -95);
+    worldGroup.add(bridge);
+    worldLoopers.push({ obj: bridge, span: 192 });
+
+    // Roadside Airport Terminal + Runway + Control Tower
+    const airport = createAirportLandmark(nightMode);
+    airport.position.set(-22, 0, -145);
+    worldGroup.add(airport);
+    worldLoopers.push({ obj: airport, span: 210 });
+
+    // Flying Passenger Jet in the Sky
+    skyPlane = createAirplane();
+    skyPlane.position.set(-40, 20, -65);
+    skyPlane.rotation.y = -Math.PI / 3;
+    worldGroup.add(skyPlane);
+
+    // 3D Fluffy Sky Clouds
+    const cloudMat = new THREE.MeshLambertMaterial({
+      color: nightMode ? 0x1e293b : desertMode ? 0xfde68a : 0xffffff,
+      transparent: true,
+      opacity: nightMode ? 0.45 : 0.85,
+      fog: false,
+    });
+    for (let c = 0; c < 8; c++) {
+      const cl = new THREE.Group();
+      for (let p = 0; p < 3; p++) {
+        const puff = new THREE.Mesh(new THREE.SphereGeometry(2.2 - p * 0.35, 8, 8), cloudMat);
+        puff.position.set((p - 1) * 1.8, (p % 2) * 0.6, 0);
+        puff.scale.set(1.4, 0.7, 1.0);
+        cl.add(puff);
+      }
+      cl.position.set(-45 + c * 14, 22 + (c % 3) * 3, -80 - (c % 4) * 18);
+      worldGroup.add(cl);
+      skyClouds.push(cl);
+    }
+  }
+
+  function updateWorldScenery(speed3D, dt) {
+    for (const item of worldLoopers) {
+      item.obj.position.z += speed3D * dt;
+      if (item.obj.position.z > 28) {
+        item.obj.position.z -= item.span;
+      }
+    }
+    if (movingTrain) {
+      movingTrain.position.x += 14 * dt;
+      if (movingTrain.position.x > 34) movingTrain.position.x = -26;
+    }
+    if (airportRadar) {
+      airportRadar.rotation.y += 2.6 * dt;
+    }
+    if (skyPlane) {
+      skyPlane.position.x += 13 * dt;
+      skyPlane.position.z -= 4 * dt;
+      if (skyPlane.position.x > 55) {
+        skyPlane.position.set(-55, 19 + Math.random() * 5, -55 - Math.random() * 25);
+      }
+    }
+    for (const cl of skyClouds) {
+      cl.position.x += 1.4 * dt;
+      if (cl.position.x > 65) cl.position.x = -65;
+    }
+  }
+
   function buildSkyline(roadId) {
     while (skylineGroup.children.length > 0) {
       skylineGroup.remove(skylineGroup.children[0]);
@@ -839,6 +1159,7 @@
     horizonMat.color.setHex(road.nightMode ? 0xff3d71 : road.id === "desert" ? 0xfef08a : 0xfde047);
     buildRoadProps(road.propType);
     buildSkyline(roadId);
+    buildRealWorldScenery(roadId);
   }
 
   // Horizon Sun / Synthwave Disc
@@ -1902,6 +2223,8 @@
         prop.position.z += demoSpeed3D * dt;
         if (prop.position.z > 22) prop.position.z -= 18 * 11;
       }
+      asphaltTex.offset.y = (asphaltTex.offset.y + demoSpeed3D * dt * 0.1) % 1;
+      updateWorldScenery(demoSpeed3D, dt);
       for (const s of speedStreaks) {
         s.position.z += demoSpeed3D * 1.45 * dt;
         if (s.position.z > 16) s.position.z -= 95;
@@ -2022,6 +2345,7 @@
       prop.position.z += speed3D * dt;
       if (prop.position.z > 22) prop.position.z -= 18 * 11;
     }
+    updateWorldScenery(speed3D, dt);
     const streakSpeed = speed3D * (player.boosting ? 2.2 : 1.45);
     streakMat.opacity = player.boosting ? 0.72 : 0.35;
     for (const s of speedStreaks) {
