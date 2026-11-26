@@ -398,11 +398,17 @@
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.12;
+  renderer.outputEncoding = THREE.sRGBEncoding;
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.5, 220);
 
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+  const hemiLight = new THREE.HemisphereLight(0xa5f3fc, 0x0f172a, 0.75);
+  scene.add(hemiLight);
+
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
   scene.add(ambientLight);
 
   const sunLight = new THREE.DirectionalLight(0xffffff, 1.0);
@@ -434,7 +440,35 @@
   shoulderMesh.receiveShadow = true;
   scene.add(shoulderMesh);
 
-  const asphaltMat = new THREE.MeshLambertMaterial({ color: 0x171d33 });
+  // Procedural Asphalt Grain Texture
+  function createAsphaltTexture() {
+    const texCanvas = document.createElement("canvas");
+    texCanvas.width = 128;
+    texCanvas.height = 128;
+    const tctx = texCanvas.getContext("2d");
+    tctx.fillStyle = "#d8d8d8";
+    tctx.fillRect(0, 0, 128, 128);
+    for (let i = 0; i < 900; i++) {
+      const x = Math.random() * 128;
+      const y = Math.random() * 128;
+      const v = 185 + Math.floor(Math.random() * 55);
+      tctx.fillStyle = `rgb(${v},${v},${v})`;
+      tctx.fillRect(x, y, 2, 2);
+    }
+    const tex = new THREE.CanvasTexture(texCanvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(2, 24);
+    return tex;
+  }
+
+  const asphaltTex = createAsphaltTexture();
+  const asphaltMat = new THREE.MeshStandardMaterial({
+    color: 0x171d33,
+    map: asphaltTex,
+    roughness: 0.85,
+    metalness: 0.1,
+  });
   const asphaltMesh = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_WIDTH, 240), asphaltMat);
   asphaltMesh.rotation.x = -Math.PI / 2;
   asphaltMesh.position.set(0, 0, -75);
@@ -447,6 +481,14 @@
   const rightEdge = leftEdge.clone();
   rightEdge.position.x = ROAD_WIDTH / 2 - 0.15;
   scene.add(leftEdge, rightEdge);
+
+  // 3D Highway Guardrails
+  const railMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.6, roughness: 0.35 });
+  const railL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.24, 240), railMat);
+  railL.position.set(-ROAD_WIDTH / 2 - 1.15, 0.55, -75);
+  const railR = railL.clone();
+  railR.position.x = ROAD_WIDTH / 2 + 1.15;
+  scene.add(railL, railR);
 
   // Scrolling Lane Dashes
   const laneDashMat = new THREE.MeshBasicMaterial({ color: 0xff3d71 });
@@ -469,8 +511,11 @@
   // ---------------------------------------------------------------------------
   const wheelGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.28, 14);
   wheelGeo.rotateZ(Math.PI / 2);
-  const wheelMat = new THREE.MeshLambertMaterial({ color: 0x111827 });
-  const glassMat = new THREE.MeshLambertMaterial({ color: 0x0f172a });
+  const rimGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.3, 10);
+  rimGeo.rotateZ(Math.PI / 2);
+  const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.8 });
+  const rimMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, metalness: 0.85, roughness: 0.2 });
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x0b1220, metalness: 0.75, roughness: 0.12 });
   const headlightMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
 
   function createVehicleMesh(kind, color, isPlayer) {
@@ -479,7 +524,11 @@
       ? { w: 1.95, len: 4.2, h: 1.15 }
       : VEHICLE_TYPES.find((v) => v.kind === kind) || VEHICLE_TYPES[0];
 
-    const bodyMat = new THREE.MeshLambertMaterial({ color });
+    const bodyMat = new THREE.MeshStandardMaterial({
+      color,
+      metalness: 0.48,
+      roughness: 0.24,
+    });
 
     // Main Chassis
     const chassisH = kind === "truck" ? 0.65 : spec.h * 0.55;
@@ -552,6 +601,8 @@
     ];
     wheelOffsets.forEach(([wx, wy, wz]) => {
       const w = new THREE.Mesh(wheelGeo, wheelMat);
+      const rim = new THREE.Mesh(rimGeo, rimMat);
+      w.add(rim);
       w.position.set(wx, wy, wz);
       w.castShadow = true;
       group.add(w);
@@ -707,6 +758,49 @@
     }
   }
 
+  const skylineGroup = new THREE.Group();
+  scene.add(skylineGroup);
+
+  function buildSkyline(roadId) {
+    while (skylineGroup.children.length > 0) {
+      skylineGroup.remove(skylineGroup.children[0]);
+    }
+    const count = 16;
+    for (let i = 0; i < count; i++) {
+      const x = -85 + i * 11.5 + (Math.random() - 0.5) * 3;
+      if (Math.abs(x) < 12) continue;
+      if (roadId === "neon") {
+        const h = 14 + Math.random() * 24;
+        const b = new THREE.Mesh(
+          new THREE.BoxGeometry(6 + Math.random() * 3, h, 6),
+          new THREE.MeshBasicMaterial({ color: 0x0f172a, fog: false })
+        );
+        b.position.set(x, h / 2 - 2, -160 - Math.random() * 12);
+        const strip = new THREE.Mesh(
+          new THREE.BoxGeometry(0.3, h * 0.75, 0.3),
+          new THREE.MeshBasicMaterial({ color: i % 2 === 0 ? 0x00e5ff : 0xff3d71, fog: false })
+        );
+        strip.position.set(x, h / 2, b.position.z + 3.1);
+        skylineGroup.add(b, strip);
+      } else if (roadId === "highway") {
+        const hill = new THREE.Mesh(
+          new THREE.ConeGeometry(14 + Math.random() * 6, 14 + Math.random() * 10, 6),
+          new THREE.MeshLambertMaterial({ color: 0x15803d, fog: false })
+        );
+        hill.position.set(x, 4, -158 - Math.random() * 10);
+        skylineGroup.add(hill);
+      } else {
+        const mesaH = 10 + Math.random() * 12;
+        const mesa = new THREE.Mesh(
+          new THREE.CylinderGeometry(5 + Math.random() * 3, 9 + Math.random() * 4, mesaH, 6),
+          new THREE.MeshLambertMaterial({ color: 0x9a3412, fog: false })
+        );
+        mesa.position.set(x, mesaH / 2 - 1, -158 - Math.random() * 10);
+        skylineGroup.add(mesa);
+      }
+    }
+  }
+
   function applyRoadTheme(roadId) {
     const road = ROADS[roadId];
     scene.background = new THREE.Color(road.sky);
@@ -717,6 +811,8 @@
     edgeLineMat.color.setHex(road.edgeLine);
     laneDashMat.color.setHex(road.laneDash);
 
+    hemiLight.color.setHex(road.sky);
+    hemiLight.groundColor.setHex(road.ground);
     ambientLight.color.setHex(road.ambientColor);
     ambientLight.intensity = road.ambientIntensity;
     sunLight.color.setHex(road.sunColor);
@@ -727,6 +823,7 @@
     }
     horizonMat.color.setHex(road.nightMode ? 0xff3d71 : road.id === "desert" ? 0xfef08a : 0xfde047);
     buildRoadProps(road.propType);
+    buildSkyline(roadId);
   }
 
   // Horizon Sun / Synthwave Disc
@@ -1888,7 +1985,8 @@
     camera.position.set(player.x * 0.45 + shakeX, 4.7 + shakeY, 9.0);
     camera.lookAt(player.x * 0.65, 1.1, -18);
 
-    // Scroll 3D lane dashes, roadside props & speed streaks
+    // Scroll 3D asphalt texture, lane dashes, roadside props & speed streaks
+    asphaltTex.offset.y = (asphaltTex.offset.y + speed3D * dt * 0.1) % 1;
     for (const dash of laneDashes) {
       dash.position.z += speed3D * dt;
       if (dash.position.z > 20) dash.position.z -= DASH_COUNT * DASH_STEP;
