@@ -143,6 +143,7 @@
   const btnPause = document.getElementById("btn-pause");
   const calloutEl = document.getElementById("callout");
   const countdownEl = document.getElementById("countdown");
+  const extremeVignette = document.getElementById("extreme-vignette");
 
   const touchControls = document.getElementById("touch-controls");
   const touchLeft = document.getElementById("touch-left");
@@ -1664,6 +1665,7 @@
     const isExtreme = selectedMode === "extreme";
     touchBrake.classList.toggle("hidden", !isExtreme);
     desktopBrakeBtn.classList.toggle("hidden", !isExtreme);
+    if (extremeVignette) extremeVignette.classList.toggle("hidden", !isExtreme);
     sfx.startMusic(selectedMode);
     runCountdown();
   }
@@ -1693,6 +1695,7 @@
     touchControls.classList.add("hidden");
     touchBrake.classList.add("hidden");
     desktopBrakeBtn.classList.add("hidden");
+    if (extremeVignette) extremeVignette.classList.add("hidden");
     screenPause.classList.add("hidden");
     screenGameover.classList.add("hidden");
     screenMenu.classList.remove("hidden");
@@ -1744,6 +1747,7 @@
     state = "gameover";
     touchControls.classList.add("hidden");
     desktopBrakeBtn.classList.add("hidden");
+    if (extremeVignette) extremeVignette.classList.add("hidden");
 
     const finalScore = Math.floor(score);
     const prevBest = getBestScore(selectedMode);
@@ -2648,16 +2652,21 @@
       }
     }
 
-    // Dynamic 3D chase camera
-    const baseFov = window.innerWidth < 520 ? 72 : 60;
-    const targetFov = player.boosting ? baseFov + 7 : player.braking ? baseFov - 4 : baseFov;
+    // Dynamic 3D chase camera (Extreme Hard adds wider hyper-FOV, banking roll & speed rumble)
+    const isExtreme = selectedMode === "extreme";
+    const baseFov = (window.innerWidth < 520 ? 72 : 60) + (isExtreme ? 5 : 0);
+    const targetFov = player.boosting ? baseFov + (isExtreme ? 10 : 7) : player.braking ? baseFov - 5 : baseFov;
     camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 8);
     camera.updateProjectionMatrix();
 
-    const shakeX = shakeTime > 0 ? (Math.random() - 0.5) * shakeTime * 1.4 : 0;
-    const shakeY = shakeTime > 0 ? (Math.random() - 0.5) * shakeTime * 1.4 : 0;
-    camera.position.set(player.x * 0.45 + shakeX, 4.7 + shakeY, 9.0);
+    const extremeRumble = isExtreme && speed > 620 ? Math.min(0.06, ((speed - 620) / 500) * 0.05) : 0;
+    const shakeX = (shakeTime > 0 ? (Math.random() - 0.5) * shakeTime * 1.4 : 0) + (Math.random() - 0.5) * extremeRumble;
+    const shakeY = (shakeTime > 0 ? (Math.random() - 0.5) * shakeTime * 1.4 : 0) + (Math.random() - 0.5) * extremeRumble;
+    camera.position.set(player.x * 0.45 + shakeX, 4.7 + shakeY, isExtreme ? 8.5 : 9.0);
     camera.lookAt(player.x * 0.65, 1.1, -18);
+    if (isExtreme) {
+      camera.rotation.z += -player.tilt * 0.22;
+    }
 
     // Scroll 3D asphalt texture, terrain texture, lane dashes, roadside props & speed streaks
     asphaltTex.offset.y = (asphaltTex.offset.y + speed3D * dt * 0.1) % 1;
@@ -2670,8 +2679,14 @@
       prop.position.z += speed3D * dt;
       if (prop.position.z > 22) prop.position.z -= 18 * 11;
     }
-    updateWorldScenery(speed3D, dt);
+    updateWorldScenery(speed3D, isExtreme ? dt * 1.45 : dt);
+    windWaveMat.color.setHex(isExtreme ? (player.boosting ? 0xff6b93 : 0x38bdf8) : 0xe0f2fe);
     updateCarWindWaves(elapsedTime, speed, player.boosting, player.braking);
+    if (isExtreme && extremeVignette) {
+      const dangerNear = traffic.some((c) => c.targetLane === player.lane && c.z > -22 && c.z < 2);
+      extremeVignette.classList.toggle("danger", dangerNear);
+      extremeVignette.style.opacity = speed > 100 ? "" : "0.15";
+    }
     const speedRatio = Math.max(0, Math.min(1, (speed - 350) / 550));
     const streakSpeed = speed3D * (player.boosting ? 2.4 : 1.5 + speedRatio * 0.6);
     streakMat.opacity = player.braking ? 0.06 : player.boosting ? 0.45 : 0.14 + speedRatio * 0.24;
