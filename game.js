@@ -2537,17 +2537,16 @@
 
     elapsedTime += dt;
 
-    // Speed progression + nitro boost / extreme-mode full-stop brake
+    // Speed progression + nitro boost / gradual extreme-mode brake
     const baseTarget = Math.min(mode.maxSpeed, mode.baseSpeed + elapsedTime * mode.accelPerSec);
-    let activeSpeed = baseTarget;
     if (player.braking) {
-      activeSpeed = 0;
-    } else if (player.boosting) {
-      activeSpeed = baseTarget * 1.32;
+      const brakeDecel = 380; // Gradually brings car from ~200 km/h to 0 km/h over ~1.9s
+      speed = Math.max(0, speed - brakeDecel * dt);
+    } else {
+      const activeSpeed = player.boosting ? baseTarget * 1.32 : baseTarget;
+      const accelLerp = speed < baseTarget * 0.8 ? 3.2 : 5.5;
+      speed += (activeSpeed - speed) * Math.min(1, dt * accelLerp);
     }
-    const lerpRate = player.braking ? 10 : 6;
-    speed += (activeSpeed - speed) * Math.min(1, dt * lerpRate);
-    if (player.braking && speed < 5) speed = 0;
     const speed3D = speed * SPEED_TO_3D;
 
     // Smooth player lane interpolation, suspension bounce & 3D tilt
