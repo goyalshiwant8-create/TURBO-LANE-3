@@ -1299,16 +1299,64 @@
   horizonDisc.position.set(26, 28, -172);
   scene.add(horizonDisc);
 
-  // Subtle Realistic Air-Rush Wisps
+  // 3D Aerodynamic Wind Waves (Over-Car Slipstream + Wingtip Vortex Trails + Highway Air Gusts)
+  const carWindWaves = [];
+  const windWaveMat = new THREE.LineBasicMaterial({
+    color: 0xe0f2fe,
+    transparent: true,
+    opacity: 0.35,
+  });
+
+  const waveSpecs = [
+    { baseX: 0, baseY: 1.18, zStart: -2.6, zEnd: 3.6, arch: 0.45, amp: 0.06, phaseOffset: 0 },
+    { baseX: -0.82, baseY: 0.85, zStart: -2.5, zEnd: 3.9, arch: 0.25, amp: 0.08, phaseOffset: 1.4 },
+    { baseX: 0.82, baseY: 0.85, zStart: -2.5, zEnd: 3.9, arch: 0.25, amp: 0.08, phaseOffset: 2.8 },
+    { baseX: -1.06, baseY: 1.05, zStart: 1.6, zEnd: 5.4, arch: 0, amp: 0.12, phaseOffset: 0.7 },
+    { baseX: 1.06, baseY: 1.05, zStart: 1.6, zEnd: 5.4, arch: 0, amp: 0.12, phaseOffset: 3.9 },
+  ];
+
+  waveSpecs.forEach((ws) => {
+    const segs = 16;
+    const pts = new Float32Array((segs + 1) * 3);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pts, 3));
+    const line = new THREE.Line(geo, windWaveMat);
+    playerMesh.add(line);
+    carWindWaves.push({ line, geo, segs, ...ws });
+  });
+
+  function updateCarWindWaves(timeSec, currentSpeed, isBoosting, isBraking) {
+    const speedNorm = Math.max(0, Math.min(1, (currentSpeed - 350) / 550));
+    const targetOpacity = isBraking ? 0.08 : isBoosting ? 0.88 : 0.18 + speedNorm * 0.55;
+    windWaveMat.opacity += (targetOpacity - windWaveMat.opacity) * 0.18;
+    const waveFreq = 12 + speedNorm * 16 + (isBoosting ? 8 : 0);
+
+    for (const w of carWindWaves) {
+      const pos = w.geo.attributes.position.array;
+      for (let i = 0; i <= w.segs; i++) {
+        const t = i / w.segs;
+        const z = w.zStart + (w.zEnd - w.zStart) * t;
+        const archY = w.arch * Math.sin(t * Math.PI);
+        const rippleY = Math.sin(z * 1.9 - timeSec * waveFreq + w.phaseOffset) * w.amp * (0.4 + speedNorm);
+        const rippleX = Math.cos(z * 1.6 - timeSec * waveFreq + w.phaseOffset) * (w.amp * 0.7) * (0.3 + speedNorm);
+        pos[i * 3] = w.baseX + rippleX;
+        pos[i * 3 + 1] = w.baseY + archY + rippleY;
+        pos[i * 3 + 2] = z;
+      }
+      w.geo.attributes.position.needsUpdate = true;
+    }
+  }
+
+  // Highway Wind-Wave Gusts around the car
   const speedStreaks = [];
-  const streakGeo = new THREE.BoxGeometry(0.03, 0.03, 3.8);
-  const streakMat = new THREE.MeshBasicMaterial({ color: 0xe2e8f0, transparent: true, opacity: 0.14 });
-  for (let i = 0; i < 12; i++) {
+  const streakGeo = new THREE.BoxGeometry(0.035, 0.035, 4.2);
+  const streakMat = new THREE.MeshBasicMaterial({ color: 0xe2e8f0, transparent: true, opacity: 0.16 });
+  for (let i = 0; i < 18; i++) {
     const s = new THREE.Mesh(streakGeo, streakMat);
     const side = i % 2 === 0 ? -1 : 1;
-    s.position.set(side * (6.2 + Math.random() * 4), 1.2 + Math.random() * 4.5, 10 - Math.random() * 90);
+    s.position.set(side * (2.2 + Math.random() * 6.5), 0.7 + Math.random() * 3.8, 10 - Math.random() * 90);
     scene.add(s);
-    speedStreaks.push(s);
+    speedStreaks.push({ mesh: s, phase: Math.random() * Math.PI * 2, baseX: s.position.x, baseY: s.position.y });
   }
 
   // 3D Collectible Metallic Gold Coin Geometry & Material
@@ -2432,9 +2480,11 @@
       terrainTex.offset.y = (terrainTex.offset.y + demoSpeed3D * dt * 0.1) % 1;
       updateWorldScenery(demoSpeed3D, dt);
       for (const s of speedStreaks) {
-        s.position.z += demoSpeed3D * 1.45 * dt;
-        if (s.position.z > 16) s.position.z -= 95;
+        s.mesh.position.z += demoSpeed3D * 1.55 * dt;
+        s.mesh.position.y = s.baseY + Math.sin(demoTime * 6 + s.phase) * 0.16;
+        if (s.mesh.position.z > 16) s.mesh.position.z -= 95;
       }
+      updateCarWindWaves(demoTime, 460, false, false);
 
       // Spawn & move demo traffic
       spawnTimer -= dt;
@@ -2553,11 +2603,15 @@
       if (prop.position.z > 22) prop.position.z -= 18 * 11;
     }
     updateWorldScenery(speed3D, dt);
-    const streakSpeed = speed3D * (player.boosting ? 2.2 : 1.45);
-    streakMat.opacity = player.boosting ? 0.32 : 0.12;
+    updateCarWindWaves(elapsedTime, speed, player.boosting, player.braking);
+    const speedRatio = Math.max(0, Math.min(1, (speed - 350) / 550));
+    const streakSpeed = speed3D * (player.boosting ? 2.4 : 1.5 + speedRatio * 0.6);
+    streakMat.opacity = player.braking ? 0.06 : player.boosting ? 0.45 : 0.14 + speedRatio * 0.24;
     for (const s of speedStreaks) {
-      s.position.z += streakSpeed * dt;
-      if (s.position.z > 16) s.position.z -= 95;
+      s.mesh.position.z += streakSpeed * dt;
+      s.mesh.position.y = s.baseY + Math.sin(elapsedTime * 8 + s.phase) * 0.22;
+      s.mesh.scale.z = 0.8 + speedRatio * 0.9 + (player.boosting ? 0.6 : 0);
+      if (s.mesh.position.z > 16) s.mesh.position.z -= 95;
     }
 
     // Score, Distance & 500m Level-Up Milestones (1000m Finish Line in Multiplayer)
