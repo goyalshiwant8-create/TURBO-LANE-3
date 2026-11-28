@@ -2771,24 +2771,40 @@
 
     for (let i = traffic.length - 1; i >= 0; i--) {
       const car = traffic[i];
-      // Only the nearby/ahead car in the player's lane brakes with the player; other cars keep driving
-      const isNearbyInMyLane =
-        player.braking && car.targetLane === player.lane && car.z > -32 && car.z < 6;
-      car.braking = isNearbyInMyLane;
+      const inMyLane = car.targetLane === player.lane;
+      const safeRearDist = (player.len + car.len) * 0.5 + 2.6;
+      const isBehindInMyLane = inMyLane && car.z > 0;
+      const isAheadNearInMyLane = inMyLane && car.z <= 0 && car.z > -32;
 
-      let relSpeed3D = isNearbyInMyLane ? speed3D * 0.74 : speed3D - trafficCruising3D;
+      // Nearby car ahead OR car behind in player's lane applies brakes when player slows/brakes
+      const shouldBrake =
+        (player.braking && isAheadNearInMyLane) ||
+        (isBehindInMyLane && (player.braking || speed3D < trafficCruising3D) && car.z < safeRearDist + 14);
+      car.braking = shouldBrake;
+
+      let relSpeed3D = speed3D - trafficCruising3D;
+      if (player.braking && isAheadNearInMyLane) {
+        // Prevent creeping into the car ahead while braking hard
+        relSpeed3D = car.z > -10 ? 0 : speed3D * 0.25;
+      } else if (isBehindInMyLane && relSpeed3D < 0) {
+        // Car behind in player's lane brakes safely instead of rear-ending player
+        relSpeed3D = car.z <= safeRearDist ? 0 : Math.max(relSpeed3D * 0.45, -(car.z - safeRearDist) * 3.5);
+      }
 
       // Maintain following distance behind slower cars ahead in the same lane
       for (const ahead of traffic) {
         if (ahead === car || ahead.targetLane !== car.targetLane || ahead.z <= car.z) continue;
         const requiredDist = (car.len + ahead.len) * 0.5 + minFollowGap;
         if (ahead.z - car.z < requiredDist) {
-          const aheadRel = ahead.braking ? speed3D * 0.74 : speed3D - trafficCruising3D;
+          const aheadRel = ahead.braking ? 0 : speed3D - trafficCruising3D;
           relSpeed3D = Math.min(relSpeed3D, aheadRel);
         }
       }
 
       car.z += relSpeed3D * dt;
+      if (isBehindInMyLane && relSpeed3D <= 0 && car.z < safeRearDist && car.z > (player.len + car.len) * 0.43) {
+        car.z = safeRearDist;
+      }
 
       // Occasional lane change in Hard / Extreme Hard (only while moving)
       if (speed > 80 && car.canLaneChange && !car.changedLane && car.z > -95 && car.z < -45) {
