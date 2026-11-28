@@ -1299,97 +1299,62 @@
   horizonDisc.position.set(26, 28, -172);
   scene.add(horizonDisc);
 
-  // Clean Racing Wind-Streak Particle Streams (Side-Fender Slipstream + Peripheral Speed Lines)
-  function createWindRibbonTexture() {
-    const c = document.createElement("canvas");
-    c.width = 32;
-    c.height = 128;
-    const g = c.getContext("2d");
-    const hGrad = g.createLinearGradient(0, 0, 32, 0);
-    hGrad.addColorStop(0, "rgba(255,255,255,0)");
-    hGrad.addColorStop(0.5, "rgba(255,255,255,0.95)");
-    hGrad.addColorStop(1, "rgba(255,255,255,0)");
-
-    const vGrad = g.createLinearGradient(0, 0, 0, 128);
-    vGrad.addColorStop(0, "rgba(255,255,255,0)");
-    vGrad.addColorStop(0.2, "rgba(255,255,255,1)");
-    vGrad.addColorStop(0.85, "rgba(255,255,255,0.35)");
-    vGrad.addColorStop(1, "rgba(255,255,255,0)");
-
-    g.fillStyle = hGrad;
-    g.fillRect(0, 0, 32, 128);
-    g.globalCompositeOperation = "destination-in";
-    g.fillStyle = vGrad;
-    g.fillRect(0, 0, 32, 128);
-
-    const tex = new THREE.CanvasTexture(c);
-    tex.wrapS = THREE.ClampToEdgeWrapping;
-    tex.wrapT = THREE.ClampToEdgeWrapping;
-    return tex;
-  }
-
-  const windRibbonTex = createWindRibbonTexture();
-  const sideWindStreaks = [];
-  const sideWindGeo = new THREE.PlaneGeometry(0.055, 1.85);
-  sideWindGeo.rotateX(-Math.PI / 2);
-  const sideWindMat = new THREE.MeshBasicMaterial({
-    map: windRibbonTex,
-    color: 0xf8fafc,
+  // 3D Aerodynamic Wind Waves (Over-Car Slipstream + Wingtip Vortex Trails + Highway Air Gusts)
+  const carWindWaves = [];
+  const windWaveMat = new THREE.LineBasicMaterial({
+    color: 0xe0f2fe,
     transparent: true,
     opacity: 0.35,
-    side: THREE.DoubleSide,
-    depthWrite: false,
   });
 
-  // 14 crisp razor-thin slipstream wisps streaming past the left & right flanks of the car
-  for (let i = 0; i < 14; i++) {
-    const side = i % 2 === 0 ? -1 : 1;
-    const m = new THREE.Mesh(sideWindGeo, sideWindMat);
-    const xOffset = side * (1.16 + (i % 4) * 0.14);
-    const yOffset = 0.35 + (i % 5) * 0.16;
-    const zPos = -2.4 + Math.random() * 8.4;
-    m.position.set(xOffset, yOffset, zPos);
-    playerMesh.add(m);
-    sideWindStreaks.push({ mesh: m, baseX: xOffset, baseY: yOffset, phase: i * 0.9 });
-  }
+  const waveSpecs = [
+    { baseX: 0, baseY: 1.18, zStart: -2.6, zEnd: 3.6, arch: 0.45, amp: 0.06, phaseOffset: 0 },
+    { baseX: -0.82, baseY: 0.85, zStart: -2.5, zEnd: 3.9, arch: 0.25, amp: 0.08, phaseOffset: 1.4 },
+    { baseX: 0.82, baseY: 0.85, zStart: -2.5, zEnd: 3.9, arch: 0.25, amp: 0.08, phaseOffset: 2.8 },
+    { baseX: -1.06, baseY: 1.05, zStart: 1.6, zEnd: 5.4, arch: 0, amp: 0.12, phaseOffset: 0.7 },
+    { baseX: 1.06, baseY: 1.05, zStart: 1.6, zEnd: 5.4, arch: 0, amp: 0.12, phaseOffset: 3.9 },
+  ];
 
-  let lastWindUpdateSec = 0;
+  waveSpecs.forEach((ws) => {
+    const segs = 16;
+    const pts = new Float32Array((segs + 1) * 3);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pts, 3));
+    const line = new THREE.Line(geo, windWaveMat);
+    playerMesh.add(line);
+    carWindWaves.push({ line, geo, segs, ...ws });
+  });
+
   function updateCarWindWaves(timeSec, currentSpeed, isBoosting, isBraking) {
-    const wdt = Math.min(0.05, Math.max(0.001, timeSec - lastWindUpdateSec));
-    lastWindUpdateSec = timeSec;
-
     const speedNorm = Math.max(0, Math.min(1, (currentSpeed - 350) / 550));
-    const targetOpacity = isBraking ? 0.04 : isBoosting ? 0.65 : 0.14 + speedNorm * 0.36;
-    sideWindMat.opacity += (targetOpacity - sideWindMat.opacity) * 0.18;
-    sideWindMat.color.setHex(isBoosting ? 0xbae6fd : 0xf8fafc);
+    const targetOpacity = isBraking ? 0.08 : isBoosting ? 0.88 : 0.18 + speedNorm * 0.55;
+    windWaveMat.opacity += (targetOpacity - windWaveMat.opacity) * 0.18;
+    const waveFreq = 12 + speedNorm * 16 + (isBoosting ? 8 : 0);
 
-    const flowSpeed = 16 + speedNorm * 22 + (isBoosting ? 14 : 0);
-    for (const s of sideWindStreaks) {
-      s.mesh.position.z += flowSpeed * wdt;
-      s.mesh.position.y = s.baseY + Math.sin(timeSec * 10 + s.phase) * 0.03;
-      s.mesh.scale.z = 0.75 + speedNorm * 0.8 + (isBoosting ? 0.65 : 0);
-      if (s.mesh.position.z > 6.2) {
-        s.mesh.position.z = -2.8 - Math.random() * 1.4;
+    for (const w of carWindWaves) {
+      const pos = w.geo.attributes.position.array;
+      for (let i = 0; i <= w.segs; i++) {
+        const t = i / w.segs;
+        const z = w.zStart + (w.zEnd - w.zStart) * t;
+        const archY = w.arch * Math.sin(t * Math.PI);
+        const rippleY = Math.sin(z * 1.9 - timeSec * waveFreq + w.phaseOffset) * w.amp * (0.4 + speedNorm);
+        const rippleX = Math.cos(z * 1.6 - timeSec * waveFreq + w.phaseOffset) * (w.amp * 0.7) * (0.3 + speedNorm);
+        pos[i * 3] = w.baseX + rippleX;
+        pos[i * 3 + 1] = w.baseY + archY + rippleY;
+        pos[i * 3 + 2] = z;
       }
+      w.geo.attributes.position.needsUpdate = true;
     }
   }
 
-  // Crisp Peripheral Highway Speed Lines (along outer edges, keeping road lanes unobstructed)
+  // Highway Wind-Wave Gusts around the car
   const speedStreaks = [];
-  const streakGeo = new THREE.PlaneGeometry(0.05, 3.8);
-  streakGeo.rotateX(-Math.PI / 2);
-  const streakMat = new THREE.MeshBasicMaterial({
-    map: windRibbonTex,
-    color: 0xf8fafc,
-    transparent: true,
-    opacity: 0.2,
-    side: THREE.DoubleSide,
-    depthWrite: false,
-  });
-  for (let i = 0; i < 16; i++) {
+  const streakGeo = new THREE.BoxGeometry(0.035, 0.035, 4.2);
+  const streakMat = new THREE.MeshBasicMaterial({ color: 0xe2e8f0, transparent: true, opacity: 0.16 });
+  for (let i = 0; i < 18; i++) {
     const s = new THREE.Mesh(streakGeo, streakMat);
     const side = i % 2 === 0 ? -1 : 1;
-    s.position.set(side * (4.6 + Math.random() * 5.2), 0.6 + Math.random() * 3.4, 10 - Math.random() * 90);
+    s.position.set(side * (2.2 + Math.random() * 6.5), 0.7 + Math.random() * 3.8, 10 - Math.random() * 90);
     scene.add(s);
     speedStreaks.push({ mesh: s, phase: Math.random() * Math.PI * 2, baseX: s.position.x, baseY: s.position.y });
   }
