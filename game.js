@@ -1101,6 +1101,35 @@
     return plane;
   }
 
+  function createHighwayGantry() {
+    const g = new THREE.Group();
+    const steelMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.7, roughness: 0.35 });
+    [-6.4, 6.4].forEach((px) => {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.32, 6.4, 0.32), steelMat);
+      post.position.set(px, 3.2, 0);
+      g.add(post);
+    });
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(13.2, 0.36, 0.36), steelMat);
+    beam.position.set(0, 6.2, 0);
+    g.add(beam);
+
+    // Green Highway Directional Boards
+    const boardMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.5 });
+    const borderMat = new THREE.MeshBasicMaterial({ color: 0xf8fafc });
+    [-2.8, 2.8].forEach((bx) => {
+      const board = new THREE.Mesh(new THREE.BoxGeometry(3.8, 1.5, 0.14), boardMat);
+      board.position.set(bx, 6.2, 0.14);
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.16, 0.16), borderMat);
+      stripe.position.set(bx, 6.55, 0.16);
+      g.add(board, stripe);
+    });
+    return g;
+  }
+
+  let trainDir = 1;
+  let planeDir = 1;
+  let sceneryDistanceAcc = 0;
+
   function buildRealWorldScenery(roadId) {
     while (worldGroup.children.length > 0) {
       worldGroup.remove(worldGroup.children[0]);
@@ -1110,37 +1139,46 @@
     movingTrain = null;
     airportRadar = null;
     skyPlane = null;
+    trainDir = 1;
+    planeDir = 1;
+    sceneryDistanceAcc = 0;
 
     const nightMode = roadId === "neon";
     const desertMode = roadId === "desert";
 
-    // Roadside Buildings + Nature Clusters along both sides
+    // Roadside Buildings + Nature Clusters with dynamic variety
     for (let i = 0; i < 12; i++) {
       const z = 12 - i * 16;
       [-1, 1].forEach((side, sIdx) => {
         const bldg = createBuildingMesh(nightMode, desertMode, i + sIdx);
         bldg.position.set(side * (13.5 + (i % 2) * 3.5), 0, z);
         worldGroup.add(bldg);
-        worldLoopers.push({ obj: bldg, span: 12 * 16 });
+        worldLoopers.push({ obj: bldg, span: 12 * 16, kind: "building", side });
 
         const nat = createNatureCluster(roadId, i + sIdx);
         nat.position.set(side * (9.5 + (i % 3) * 1.4), 0, z - 8);
         worldGroup.add(nat);
-        worldLoopers.push({ obj: nat, span: 12 * 16 });
+        worldLoopers.push({ obj: nat, span: 12 * 16, kind: "nature", side });
       });
     }
 
-    // Overhead Train Bridge + Moving Express Train
+    // Overhead Train Bridge + Moving Indian Express Train
     const bridge = createTrainBridge(nightMode);
     bridge.position.set(0, 0, -95);
     worldGroup.add(bridge);
-    worldLoopers.push({ obj: bridge, span: 192 });
+    worldLoopers.push({ obj: bridge, span: 215, kind: "bridge" });
+
+    // Overhead Highway Sign Gantry
+    const gantry = createHighwayGantry();
+    gantry.position.set(0, 0, -52);
+    worldGroup.add(gantry);
+    worldLoopers.push({ obj: gantry, span: 155, kind: "gantry" });
 
     // Roadside Airport Terminal + Runway + Control Tower
     const airport = createAirportLandmark(nightMode);
     airport.position.set(-22, 0, -145);
     worldGroup.add(airport);
-    worldLoopers.push({ obj: airport, span: 210 });
+    worldLoopers.push({ obj: airport, span: 235, kind: "airport" });
 
     // Flying Passenger Jet in the Sky
     skyPlane = createAirplane();
@@ -1165,34 +1203,63 @@
       }
       cl.position.set(-45 + c * 14, 22 + (c % 3) * 3, -80 - (c % 4) * 18);
       worldGroup.add(cl);
-      skyClouds.push(cl);
+      skyClouds.push({ mesh: cl, speed: 1.0 + (c % 3) * 0.65 });
     }
   }
 
   function updateWorldScenery(speed3D, dt) {
+    sceneryDistanceAcc += speed3D * dt;
+    // Alternate between City Zone and Open Countryside Zone every ~260 units
+    const inOpenCountryside = Math.floor(sceneryDistanceAcc / 260) % 2 === 1;
+
     for (const item of worldLoopers) {
       item.obj.position.z += speed3D * dt;
       if (item.obj.position.z > 28) {
         item.obj.position.z -= item.span;
+
+        if (item.kind === "building") {
+          // Hide buildings during open countryside stretches; vary height/width/offset in city zones
+          item.obj.visible = !inOpenCountryside || Math.random() < 0.25;
+          item.obj.scale.set(0.8 + Math.random() * 0.55, 0.65 + Math.random() * 0.9, 0.8 + Math.random() * 0.55);
+          item.obj.position.x = item.side * (13 + Math.random() * 6.5);
+        } else if (item.kind === "nature") {
+          item.obj.rotation.y = Math.random() * Math.PI * 2;
+          const s = 0.75 + Math.random() * 0.65;
+          item.obj.scale.set(s, s, s);
+          item.obj.position.x = item.side * (8.8 + Math.random() * 4.5);
+        } else if (item.kind === "bridge" && movingTrain) {
+          // Alternate Indian Express Train direction & start position on each bridge crossing
+          trainDir = Math.random() < 0.5 ? 1 : -1;
+          movingTrain.rotation.y = trainDir === 1 ? 0 : Math.PI;
+          movingTrain.position.x = trainDir === 1 ? -28 : 28;
+        } else if (item.kind === "airport") {
+          const apSide = Math.random() < 0.5 ? -1 : 1;
+          item.obj.position.x = apSide * 22;
+          item.obj.rotation.y = apSide === -1 ? 0 : Math.PI;
+        }
       }
     }
+
     if (movingTrain) {
-      movingTrain.position.x += 14 * dt;
-      if (movingTrain.position.x > 34) movingTrain.position.x = -26;
+      movingTrain.position.x += 14 * trainDir * dt;
+      if (trainDir === 1 && movingTrain.position.x > 34) movingTrain.position.x = -26;
+      if (trainDir === -1 && movingTrain.position.x < -34) movingTrain.position.x = 26;
     }
     if (airportRadar) {
       airportRadar.rotation.y += 2.6 * dt;
     }
     if (skyPlane) {
-      skyPlane.position.x += 13 * dt;
-      skyPlane.position.z -= 4 * dt;
-      if (skyPlane.position.x > 55) {
-        skyPlane.position.set(-55, 19 + Math.random() * 5, -55 - Math.random() * 25);
+      skyPlane.position.x += 13 * planeDir * dt;
+      skyPlane.position.z -= 3.5 * dt;
+      if (Math.abs(skyPlane.position.x) > 58) {
+        planeDir = Math.random() < 0.5 ? 1 : -1;
+        skyPlane.position.set(-55 * planeDir, 18 + Math.random() * 7, -50 - Math.random() * 35);
+        skyPlane.rotation.y = planeDir === 1 ? -Math.PI / 3 : Math.PI / 3;
       }
     }
     for (const cl of skyClouds) {
-      cl.position.x += 1.4 * dt;
-      if (cl.position.x > 65) cl.position.x = -65;
+      cl.mesh.position.x += cl.speed * dt;
+      if (cl.mesh.position.x > 65) cl.mesh.position.x = -65;
     }
   }
 
