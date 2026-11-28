@@ -2537,16 +2537,17 @@
 
     elapsedTime += dt;
 
-    // Speed progression + nitro boost / extreme-mode brake
+    // Speed progression + nitro boost / extreme-mode full-stop brake
     const baseTarget = Math.min(mode.maxSpeed, mode.baseSpeed + elapsedTime * mode.accelPerSec);
     let activeSpeed = baseTarget;
     if (player.braking) {
-      activeSpeed = baseTarget * 0.50;
+      activeSpeed = 0;
     } else if (player.boosting) {
       activeSpeed = baseTarget * 1.32;
     }
-    const lerpRate = player.braking ? 9 : 6;
+    const lerpRate = player.braking ? 10 : 6;
     speed += (activeSpeed - speed) * Math.min(1, dt * lerpRate);
+    if (player.braking && speed < 5) speed = 0;
     const speed3D = speed * SPEED_TO_3D;
 
     // Smooth player lane interpolation, suspension bounce & 3D tilt
@@ -2554,7 +2555,8 @@
     player.x += (targetX - player.x) * Math.min(1, dt * 15);
     player.tilt += (0 - player.tilt) * Math.min(1, dt * 10);
     playerMesh.position.x = player.x;
-    playerMesh.position.y = Math.sin(elapsedTime * 28) * 0.025;
+    const bounceAmp = Math.min(1, speed / 140) * 0.025;
+    playerMesh.position.y = Math.sin(elapsedTime * 28) * bounceAmp;
     playerMesh.rotation.z = player.tilt;
     playerMesh.rotation.y = player.tilt * 0.45;
     const targetPitch = player.boosting ? 0.04 : player.braking ? -0.05 : 0;
@@ -2614,9 +2616,11 @@
       if (s.mesh.position.z > 16) s.mesh.position.z -= 95;
     }
 
-    // Score, Distance & 500m Level-Up Milestones (1000m Finish Line in Multiplayer)
+    // Score, Distance & 500m Level-Up Milestones
     const boostMult = player.boosting ? 1.5 : 1;
-    score += dt * 28 * mode.scoreMult * boostMult;
+    if (speed > 10) {
+      score += dt * 28 * mode.scoreMult * boostMult;
+    }
     distanceMeters += (speed * dt) / 16;
 
     if (mp.active) {
@@ -2723,8 +2727,8 @@
       }
     }
 
-    // Spawning (In multiplayer, only Host spawns & broadcasts traffic)
-    if (!mp.active || mp.isHost) {
+    // Spawning (In multiplayer, only Host spawns & broadcasts traffic; pause spawns when stopped)
+    if ((!mp.active || mp.isHost) && speed > 80) {
       spawnTimer -= dt;
       if (spawnTimer <= 0) {
         spawnTraffic();
@@ -2764,19 +2768,19 @@
     const minFollowGap = 12;
     const minLaneChangeGap = 25;
     const minOvertakeCorridor = 24;
+    const trafficCruising3D = baseTarget * SPEED_TO_3D * 0.26;
 
     for (let i = traffic.length - 1; i >= 0; i--) {
       const car = traffic[i];
-      // Uniform cruising pace keeps waves from catching up and forming a 3-lane wall
-      let relSpeed3D = speed3D * 0.74;
+      // Traffic drives forward at 0.26 * baseTarget; when player brakes to 0, traffic pulls away ahead
+      let relSpeed3D = speed3D - trafficCruising3D;
 
       // Maintain following distance behind slower cars ahead in the same lane
       for (const ahead of traffic) {
         if (ahead === car || ahead.targetLane !== car.targetLane || ahead.z <= car.z) continue;
         const requiredDist = (car.len + ahead.len) * 0.5 + minFollowGap;
         if (ahead.z - car.z < requiredDist) {
-          const aheadRelSpeed3D = speed3D * 0.74;
-          relSpeed3D = Math.min(relSpeed3D, aheadRelSpeed3D);
+          relSpeed3D = Math.min(relSpeed3D, speed3D - trafficCruising3D);
         }
       }
 
@@ -2828,7 +2832,7 @@
         showCallout(`+${Math.round(50 * mode.scoreMult)} NEAR MISS!`);
       }
 
-      if (car.z > DESPAWN_Z) {
+      if (car.z > DESPAWN_Z || car.z < SPAWN_Z - 25) {
         scene.remove(car.mesh);
         traffic.splice(i, 1);
       }
