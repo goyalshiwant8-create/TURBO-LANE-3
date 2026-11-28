@@ -702,7 +702,7 @@
 
       group.userData = { bodyMat, wheels, tailMat, tlL, tlR, beam, flameL, flameR };
     } else {
-      group.userData = { wheels };
+      group.userData = { wheels, tailMat, tlL, tlR };
     }
 
     return group;
@@ -2767,18 +2767,24 @@
     const minFollowGap = 12;
     const minLaneChangeGap = 25;
     const minOvertakeCorridor = 24;
+    const trafficCruising3D = baseTarget * SPEED_TO_3D * 0.26;
 
     for (let i = traffic.length - 1; i >= 0; i--) {
       const car = traffic[i];
-      // Traffic speed scales smoothly with player's speed (slows down when braking, stops at 0)
-      let relSpeed3D = speed3D * 0.74;
+      // Only the nearby/ahead car in the player's lane brakes with the player; other cars keep driving
+      const isNearbyInMyLane =
+        player.braking && car.targetLane === player.lane && car.z > -32 && car.z < 6;
+      car.braking = isNearbyInMyLane;
+
+      let relSpeed3D = isNearbyInMyLane ? speed3D * 0.74 : speed3D - trafficCruising3D;
 
       // Maintain following distance behind slower cars ahead in the same lane
       for (const ahead of traffic) {
         if (ahead === car || ahead.targetLane !== car.targetLane || ahead.z <= car.z) continue;
         const requiredDist = (car.len + ahead.len) * 0.5 + minFollowGap;
         if (ahead.z - car.z < requiredDist) {
-          relSpeed3D = Math.min(relSpeed3D, speed3D * 0.74);
+          const aheadRel = ahead.braking ? speed3D * 0.74 : speed3D - trafficCruising3D;
+          relSpeed3D = Math.min(relSpeed3D, aheadRel);
         }
       }
 
@@ -2808,8 +2814,18 @@
       if (Math.abs(carTargetX - car.x) < 0.2) car.lane = car.targetLane;
 
       car.mesh.position.set(car.x, 0, car.z);
-      if (car.mesh.userData && car.mesh.userData.wheels) {
-        for (const w of car.mesh.userData.wheels) w.rotation.x -= speed3D * 0.45 * dt;
+      if (car.mesh.userData) {
+        const cud = car.mesh.userData;
+        if (cud.wheels) {
+          const wheelSpin = car.braking ? speed3D * 0.45 : trafficCruising3D * 1.45;
+          for (const w of cud.wheels) w.rotation.x -= wheelSpin * dt;
+        }
+        if (cud.tailMat) {
+          cud.tailMat.color.setHex(car.braking ? 0xff1744 : 0xff2a55);
+          const tScale = car.braking ? 1.45 : 1;
+          cud.tlL.scale.set(tScale, tScale, 1);
+          cud.tlR.scale.set(tScale, tScale, 1);
+        }
       }
 
       // Collision check (any hit = instant fail)
