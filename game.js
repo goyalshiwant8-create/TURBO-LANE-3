@@ -2767,26 +2767,25 @@
     const minFollowGap = 12;
     const minLaneChangeGap = 25;
     const minOvertakeCorridor = 24;
-    const trafficCruising3D = baseTarget * SPEED_TO_3D * 0.26;
 
     for (let i = traffic.length - 1; i >= 0; i--) {
       const car = traffic[i];
-      // Traffic drives forward at 0.26 * baseTarget; when player brakes to 0, traffic pulls away ahead
-      let relSpeed3D = speed3D - trafficCruising3D;
+      // Traffic speed scales smoothly with player's speed (slows down when braking, stops at 0)
+      let relSpeed3D = speed3D * 0.74;
 
       // Maintain following distance behind slower cars ahead in the same lane
       for (const ahead of traffic) {
         if (ahead === car || ahead.targetLane !== car.targetLane || ahead.z <= car.z) continue;
         const requiredDist = (car.len + ahead.len) * 0.5 + minFollowGap;
         if (ahead.z - car.z < requiredDist) {
-          relSpeed3D = Math.min(relSpeed3D, speed3D - trafficCruising3D);
+          relSpeed3D = Math.min(relSpeed3D, speed3D * 0.74);
         }
       }
 
       car.z += relSpeed3D * dt;
 
-      // Occasional lane change in Hard / Extreme Hard
-      if (car.canLaneChange && !car.changedLane && car.z > -95 && car.z < -45) {
+      // Occasional lane change in Hard / Extreme Hard (only while moving)
+      if (speed > 80 && car.canLaneChange && !car.changedLane && car.z > -95 && car.z < -45) {
         car.changedLane = true;
         const candidates = [car.lane - 1, car.lane + 1].filter((l) => l >= 0 && l <= 2);
         const safeTarget = candidates.find((targetL) => {
