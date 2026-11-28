@@ -1299,58 +1299,161 @@
   horizonDisc.position.set(26, 28, -172);
   scene.add(horizonDisc);
 
-  // 3D Aerodynamic Wind Waves (Over-Car Slipstream + Wingtip Vortex Trails + Highway Air Gusts)
+  // Volumetric 3D Aerodynamic Wind Waves (Over-Car Ribbon Streams + Helical Wingtip Vortices + Front Bow Arc)
+  function createWindRibbonTexture() {
+    const c = document.createElement("canvas");
+    c.width = 64;
+    c.height = 256;
+    const g = c.getContext("2d");
+    const hGrad = g.createLinearGradient(0, 0, 64, 0);
+    hGrad.addColorStop(0, "rgba(255,255,255,0)");
+    hGrad.addColorStop(0.5, "rgba(224,242,254,0.95)");
+    hGrad.addColorStop(1, "rgba(255,255,255,0)");
+
+    const vGrad = g.createLinearGradient(0, 0, 0, 256);
+    vGrad.addColorStop(0, "rgba(255,255,255,0)");
+    vGrad.addColorStop(0.25, "rgba(255,255,255,1)");
+    vGrad.addColorStop(0.75, "rgba(255,255,255,0.85)");
+    vGrad.addColorStop(1, "rgba(255,255,255,0)");
+
+    g.fillStyle = hGrad;
+    g.fillRect(0, 0, 64, 256);
+    g.globalCompositeOperation = "destination-in";
+    g.fillStyle = vGrad;
+    g.fillRect(0, 0, 64, 256);
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+  }
+
+  const windRibbonTex = createWindRibbonTexture();
   const carWindWaves = [];
-  const windWaveMat = new THREE.LineBasicMaterial({
+  const windWaveMat = new THREE.MeshBasicMaterial({
+    map: windRibbonTex,
     color: 0xe0f2fe,
     transparent: true,
-    opacity: 0.35,
+    opacity: 0.45,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
   });
 
+  // 3 sculpted over-body slipstream ribbons + 2 helical rear-wing vortex spirals
   const waveSpecs = [
-    { baseX: 0, baseY: 1.18, zStart: -2.6, zEnd: 3.6, arch: 0.45, amp: 0.06, phaseOffset: 0 },
-    { baseX: -0.82, baseY: 0.85, zStart: -2.5, zEnd: 3.9, arch: 0.25, amp: 0.08, phaseOffset: 1.4 },
-    { baseX: 0.82, baseY: 0.85, zStart: -2.5, zEnd: 3.9, arch: 0.25, amp: 0.08, phaseOffset: 2.8 },
-    { baseX: -1.06, baseY: 1.05, zStart: 1.6, zEnd: 5.4, arch: 0, amp: 0.12, phaseOffset: 0.7 },
-    { baseX: 1.06, baseY: 1.05, zStart: 1.6, zEnd: 5.4, arch: 0, amp: 0.12, phaseOffset: 3.9 },
+    { kind: "stream", baseX: 0, baseY: 1.18, width: 0.24, zStart: -2.7, zEnd: 3.8, arch: 0.48, amp: 0.08, phaseOffset: 0 },
+    { kind: "stream", baseX: -0.86, baseY: 0.82, width: 0.20, zStart: -2.6, zEnd: 4.1, arch: 0.28, amp: 0.10, phaseOffset: 1.5 },
+    { kind: "stream", baseX: 0.86, baseY: 0.82, width: 0.20, zStart: -2.6, zEnd: 4.1, arch: 0.28, amp: 0.10, phaseOffset: 3.1 },
+    { kind: "vortex", baseX: -1.04, baseY: 1.05, width: 0.18, zStart: 1.75, zEnd: 6.2, spiralRadius: 0.22, spinDir: 1, phaseOffset: 0.4 },
+    { kind: "vortex", baseX: 1.04, baseY: 1.05, width: 0.18, zStart: 1.75, zEnd: 6.2, spiralRadius: 0.22, spinDir: -1, phaseOffset: 2.2 },
   ];
 
   waveSpecs.forEach((ws) => {
-    const segs = 16;
-    const pts = new Float32Array((segs + 1) * 3);
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(pts, 3));
-    const line = new THREE.Line(geo, windWaveMat);
-    playerMesh.add(line);
-    carWindWaves.push({ line, geo, segs, ...ws });
+    const segs = 18;
+    const geo = new THREE.PlaneGeometry(ws.width, 1, 1, segs);
+    const mesh = new THREE.Mesh(geo, windWaveMat);
+    mesh.frustumCulled = false;
+    playerMesh.add(mesh);
+    carWindWaves.push({ mesh, geo, segs, ...ws });
   });
+
+  // Front Aero Bow Shockwave Arc around nose at high speed / boost
+  const bowArcMat = new THREE.MeshBasicMaterial({
+    map: windRibbonTex,
+    color: 0xbae6fd,
+    transparent: true,
+    opacity: 0.25,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const bowArcGeo = new THREE.PlaneGeometry(0.28, 1, 1, 16);
+  const bowArcMesh = new THREE.Mesh(bowArcGeo, bowArcMat);
+  bowArcMesh.frustumCulled = false;
+  playerMesh.add(bowArcMesh);
 
   function updateCarWindWaves(timeSec, currentSpeed, isBoosting, isBraking) {
     const speedNorm = Math.max(0, Math.min(1, (currentSpeed - 350) / 550));
-    const targetOpacity = isBraking ? 0.08 : isBoosting ? 0.88 : 0.18 + speedNorm * 0.55;
+    const targetOpacity = isBraking ? 0.06 : isBoosting ? 0.92 : 0.24 + speedNorm * 0.52;
     windWaveMat.opacity += (targetOpacity - windWaveMat.opacity) * 0.18;
-    const waveFreq = 12 + speedNorm * 16 + (isBoosting ? 8 : 0);
+    bowArcMat.opacity += ((isBraking ? 0 : isBoosting ? 0.72 : speedNorm * 0.4) - bowArcMat.opacity) * 0.15;
+    windWaveMat.color.setHex(isBoosting ? 0x7dd3fc : 0xe0f2fe);
+
+    // Animate traveling air pulses along the ribbon texture
+    windRibbonTex.offset.y = (windRibbonTex.offset.y - (0.04 + speedNorm * 0.08 + (isBoosting ? 0.07 : 0))) % 1;
+
+    const waveFreq = 14 + speedNorm * 18 + (isBoosting ? 10 : 0);
 
     for (const w of carWindWaves) {
       const pos = w.geo.attributes.position.array;
+      const halfW = w.width * (0.5 + speedNorm * 0.25);
       for (let i = 0; i <= w.segs; i++) {
         const t = i / w.segs;
         const z = w.zStart + (w.zEnd - w.zStart) * t;
-        const archY = w.arch * Math.sin(t * Math.PI);
-        const rippleY = Math.sin(z * 1.9 - timeSec * waveFreq + w.phaseOffset) * w.amp * (0.4 + speedNorm);
-        const rippleX = Math.cos(z * 1.6 - timeSec * waveFreq + w.phaseOffset) * (w.amp * 0.7) * (0.3 + speedNorm);
-        pos[i * 3] = w.baseX + rippleX;
-        pos[i * 3 + 1] = w.baseY + archY + rippleY;
-        pos[i * 3 + 2] = z;
+        let cx = w.baseX;
+        let cy = w.baseY;
+
+        if (w.kind === "stream") {
+          const archY = w.arch * Math.sin(t * Math.PI);
+          const rippleY = Math.sin(z * 2.1 - timeSec * waveFreq + w.phaseOffset) * w.amp * (0.45 + speedNorm);
+          const rippleX = Math.cos(z * 1.7 - timeSec * waveFreq + w.phaseOffset) * (w.amp * 0.6) * (0.3 + speedNorm);
+          cx += rippleX;
+          cy += archY + rippleY;
+        } else {
+          // Expanding corkscrew vortex behind rear wingtips
+          const r = w.spiralRadius * (0.35 + t * 1.25) * (0.6 + speedNorm * 0.7);
+          const theta = t * Math.PI * 3.5 * w.spinDir - timeSec * waveFreq * 0.75 + w.phaseOffset;
+          cx += Math.cos(theta) * r;
+          cy += Math.sin(theta) * r;
+        }
+
+        const idxL = i * 2 * 3;
+        const idxR = (i * 2 + 1) * 3;
+        pos[idxL] = cx - halfW;
+        pos[idxL + 1] = cy;
+        pos[idxL + 2] = z;
+        pos[idxR] = cx + halfW;
+        pos[idxR + 1] = cy;
+        pos[idxR + 2] = z;
       }
       w.geo.attributes.position.needsUpdate = true;
     }
+
+    // Update Front Aero V-Shockwave Arc
+    const bowPos = bowArcGeo.attributes.position.array;
+    const bowSegs = 16;
+    const pulse = 0.08 * Math.sin(timeSec * 16);
+    for (let i = 0; i <= bowSegs; i++) {
+      const s = (i / bowSegs) * 2 - 1; // -1 .. +1
+      const x = s * (1.55 + speedNorm * 0.35);
+      const z = -2.55 + s * s * 1.35 + pulse;
+      const y = 0.42 + (1 - s * s) * 0.25;
+      const idxF = i * 2 * 3;
+      const idxB = (i * 2 + 1) * 3;
+      bowPos[idxF] = x;
+      bowPos[idxF + 1] = y;
+      bowPos[idxF + 2] = z - 0.16;
+      bowPos[idxB] = x;
+      bowPos[idxB + 1] = y;
+      bowPos[idxB + 2] = z + 0.16;
+    }
+    bowArcGeo.attributes.position.needsUpdate = true;
   }
 
-  // Highway Wind-Wave Gusts around the car
+  // Flowing Highway Wind-Wave Gust Ribbons
   const speedStreaks = [];
-  const streakGeo = new THREE.BoxGeometry(0.035, 0.035, 4.2);
-  const streakMat = new THREE.MeshBasicMaterial({ color: 0xe2e8f0, transparent: true, opacity: 0.16 });
+  const streakGeo = new THREE.PlaneGeometry(0.16, 4.6);
+  streakGeo.rotateX(-Math.PI / 2);
+  const streakMat = new THREE.MeshBasicMaterial({
+    map: windRibbonTex,
+    color: 0xe0f2fe,
+    transparent: true,
+    opacity: 0.24,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
   for (let i = 0; i < 18; i++) {
     const s = new THREE.Mesh(streakGeo, streakMat);
     const side = i % 2 === 0 ? -1 : 1;
